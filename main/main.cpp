@@ -16,7 +16,10 @@ static const char *TAG = "MAIN";
 #define FEATURE_COUNT  8
 #define OUTPUT_COUNT   2
 
-#define ARENA_SIZE     (1024 * 1024)
+#define ARENA_SIZE     (2024 * 1024)
+
+//#include "esp_task_wdt.h"
+
 
 Model*       benchmark_model = nullptr;
 ModelFlash   model_flash;
@@ -68,8 +71,12 @@ int run_model() {
         // Transfer model from flash to PSRAM
         memcpy(psram_model_pointer, mmaped_pointer, model_flash.GetModelSize());
 
+        uint64_t startInit = esp_timer_get_time();
         benchmark_model = new Model(&model_flash,psram_model_pointer, ARENA_SIZE);
-        
+        uint64_t durationinit = esp_timer_get_time() - startInit;
+        float durationInMs = durationinit / 1000;
+        ESP_LOGI(TAG, "MODEL TOOK: %lld micro seconds, %0.4f ms, to init", durationinit, durationInMs);
+
         ESP_LOGI(TAG, "MODEL CREATED");
         if (benchmark_model->isInitialized()) {
             ESP_LOGI(TAG, "MODEL INTIALIZED SUCCESSFULLY");
@@ -87,7 +94,7 @@ int run_model() {
         uint64_t duration = esp_timer_get_time() - startTime;
 
         if (success) {
-            ESP_LOGI(TAG, "RES,%lld,%d", duration,
+            ESP_LOGI(TAG, "RES,%lld micro seconds,%0.4f ms,%d", duration, duration / 1000,
                     benchmark_model->getArenaUsedBytes());
             for (int r = 0; r < 2; r++) {
                 printf("Channel %d", r);
@@ -108,6 +115,7 @@ int run_model() {
 }
 
 extern "C" void app_main(void) {
+    //Disable watchdog
     printf("ESP32_READY\n");
     ESP_LOGW(TAG, "FREE_HEAP_CONT_START,%u",
                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));

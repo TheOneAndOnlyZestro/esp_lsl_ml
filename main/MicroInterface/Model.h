@@ -22,7 +22,7 @@ private:
     int arena_size = 0;
 
     // Resolver with enough capacity for our benchmarking ops
-    tflite::MicroMutableOpResolver<26> resolver;
+    tflite::MicroMutableOpResolver<32> resolver;
 
     bool initialized = false;
     ModelFlash* mflash;

@@ -58,7 +58,14 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
     resolver.AddElu();
     resolver.AddPad();
     resolver.AddPadV2();
+    resolver.AddExp();
+    resolver.AddGreaterEqual();
+    resolver.AddSelectV2();
+    resolver.AddSlice();
+    resolver.AddSub();
+    resolver.AddSelect();
 
+    printf("GOING TO ALLOCATE INTERPRETER NOW\n");
     // 3. Build interpreter
     interpreter = new tflite::MicroInterpreter(
         tflite_model, resolver, tensor_arena, arena_size);
@@ -67,7 +74,7 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
         printf("AllocateTensors() failed!\n");
         return;
     }
-
+    printf("TENSORS are ready\n");
     input  = interpreter->input(0);
     output = interpreter->output(0);
 

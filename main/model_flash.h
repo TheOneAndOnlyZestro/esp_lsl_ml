@@ -21,7 +21,7 @@ public:
     uint32_t GetModelSize() const;
 private:
     const esp_partition_t* partition_ = nullptr;
-    uint32_t model_size = 1454584;
+    uint32_t model_size = 2821448;
     esp_partition_mmap_handle_t mmap_handle_ = 0;
 
     const uint8_t* mapped_ptr_ = nullptr;
