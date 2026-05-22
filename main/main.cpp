@@ -84,8 +84,9 @@ int run_model() {
              ESP_LOGE(TAG, "Model was not initialized successfully");
             
         }
-        // TODO: Fill in input array with something
-
+        
+        // We need to receive data from lsl, copy it into the input_array, output results, send it back to computer and then process the next one.
+        
         float results[2][250] = {0};
 
         uint64_t startTime = esp_timer_get_time();
