@@ -59,6 +59,38 @@ static void feed_task(void *arg)
         goto cleanup;
     }
 
+    //(ANDREW)
+    /* --- NEW: handle LSL:fullinfo metadata-only request --- */
+    if (strncmp(line_buf, "LSL:fullinfo", 12) == 0) {
+        ESP_LOGI(TAG, "Handling fullinfo request");
+
+        /* Consume any remaining headers up to the empty line */
+        while (1) {
+            int hl = tcp_recv_line(sock, line_buf, sizeof(line_buf));
+            if (hl <= 0) break;   /* empty line or error */
+        }
+
+        /* Build the streaminfo XML */
+        char xml_buf[1024];   /* shortinfo without <desc> fits comfortably */
+        int xml_len = stream_info_to_shortinfo_xml(server->info, xml_buf, sizeof(xml_buf));
+        if (xml_len < 0) {
+            ESP_LOGE(TAG, "Failed to build fullinfo XML");
+            goto cleanup;
+        }
+
+        /* Desktop liblsl reads this as a null-terminated string, so send the
+        * trailing NUL byte too. */
+        if (tcp_send_all(sock, xml_buf, (size_t)xml_len) < 0 ||
+            tcp_send_all(sock, "\0", 1) < 0) {
+            ESP_LOGW(TAG, "Failed to send fullinfo response");
+            goto cleanup;
+        }
+
+        ESP_LOGI(TAG, "Sent fullinfo XML (%d bytes)", xml_len);
+        goto cleanup;   /* connection closes after info exchange */
+    }
+    /* --- END NEW --- */
+
     /* Validate request */
     if (strncmp(line_buf, "LSL:streamfeed/", 15) != 0) {
         ESP_LOGW(TAG, "Invalid request: %s", line_buf);

@@ -1,0 +1,70 @@
+menu "LSL Configuration"
+
+    config ESP_WIFI_SSID
+        string "WiFi SSID"
+        default "your_ssid"
+        help
+            SSID (network name) to connect to.
+
+    config ESP_WIFI_PASSWORD
+        string "WiFi Password"
+        default "your_password"
+        help
+            WiFi password (WPA2).
+
+    config ESP_MAXIMUM_RETRY
+        int "Maximum WiFi connection retries"
+        default 10
+        help
+            Number of times to retry WiFi connection before giving up.
+
+    config LSL_TARGET_STREAM
+        string "Target LSL stream name"
+        default "Streaming_EMG"
+        help
+            Name of the LSL stream to resolve and connect to.
+
+    config LSL_OUTLET_NAME
+        string "LSL outlet name"
+        default "ESP32_inference"
+        help
+            Name of the LSL outlet to create for sending inference results.
+endmenu
+
+menu "TFLITE Model Parameters"
+    config INPUT_CHANNELS
+        int "Number of input channels"
+        default 8
+        help
+            Number of EMG channels to read from the ADC.
+
+    config OUTPUT_CHANNELS
+        int "Number of output channels"
+        default 2
+        help
+            Number of output channels for the inference results.
+
+    config INPUT_WINDOW_SIZE
+        int "Input window size"
+        default 500
+        help
+            Number of samples in each input window for inference.
+
+    config OUTPUT_WINDOW_SIZE
+        int "Output window size"
+        default 250
+        help
+            Number of samples in each output window for sending results.
+
+    config ARENA_SIZE
+        int "Arena Size (KB)"
+        default 2048
+        help
+            Total Tensor Area (KB) Used To Store Intermediate Tensors.    
+    
+    config OUTPUT_SAMPLE_RATE
+        int "Sample Rate (Hz)"
+        default 50
+        help
+            Sample rate (in Hz) of the incoming EMG data stream.
+endmenu
