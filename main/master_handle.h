@@ -26,17 +26,18 @@ class MasterHandle {
         
         int m_input_window_size;
         int m_output_window_size;
-
-        bool m_input_window_filled;
-        bool m_output_window_filled;
     public:
         MasterHandle();
         ~MasterHandle(){};
 
         void init_model();
         void update_input_window();
+
         void push_output_window();
         void reset_for_next_window();
 
+
+        inline bool is_input_window_filled() const { return m_input_window_size >= CONFIG_INPUT_WINDOW_SIZE; }
+        inline bool is_output_window_filled() const { return m_output_window_size >= CONFIG_OUTPUT_WINDOW_SIZE; }
         void run_inference();
 };

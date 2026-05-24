@@ -15,7 +15,7 @@
 #include <stdbool.h>
 
 #define INLET_STOPPED_BIT BIT0
-#define INLET_QUEUE_SLOTS 32
+#define INLET_QUEUE_SLOTS 1024
 
 struct lsl_esp32_inlet {
     struct lsl_esp32_stream_info *info; /* owned stream info (transferred from caller) */

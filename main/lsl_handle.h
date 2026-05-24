@@ -26,7 +26,9 @@ class LSLHandle {
         LSLHandle();
         ~LSLHandle();
 
-        void init_streams();
+        void init_outlet();
+        void init_inlet();
+        
         void init_wifi();
 
         const char* get_inlet_info() const;

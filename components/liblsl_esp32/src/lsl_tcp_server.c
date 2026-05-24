@@ -65,10 +65,10 @@ static void feed_task(void *arg)
         ESP_LOGI(TAG, "Handling fullinfo request");
 
         /* Consume any remaining headers up to the empty line */
-        while (1) {
-            int hl = tcp_recv_line(sock, line_buf, sizeof(line_buf));
-            if (hl <= 0) break;   /* empty line or error */
-        }
+        // while (1) {
+        //     int hl = tcp_recv_line(sock, line_buf, sizeof(line_buf));
+        //     if (hl <= 0) break;   /* empty line or error */
+        // }
 
         /* Build the streaminfo XML */
         char xml_buf[1024];   /* shortinfo without <desc> fits comfortably */

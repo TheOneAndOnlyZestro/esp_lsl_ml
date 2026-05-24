@@ -10,10 +10,14 @@ void run_app()
     // Step 3: Push the output data buffer to the LSL outlet
 
     while (true) {
+
+        // TODO: put a condition so that we only run inference when the input window is full 
         master_handle->update_input_window();
         master_handle->run_inference();
-        master_handle->push_output_window();
+        //master_handle->push_output_window();
+        // Now it only works when the actual output window is filled, which is after the first inference runs. We can change this later to push partial windows if we want.
         master_handle->reset_for_next_window();
+        
         vTaskDelay(10 / portTICK_PERIOD_MS); // Adjust delay as needed for timing
     }
 }

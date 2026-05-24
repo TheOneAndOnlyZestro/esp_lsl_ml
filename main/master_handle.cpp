@@ -3,10 +3,7 @@
 MasterHandle::MasterHandle() {
     m_input_window_size = 0;
     m_output_window_size = 0;
-
-    m_input_window_filled = false;
-    m_output_window_filled = false;
-
+    
     init_model();
     m_lsl_handle = new LSLHandle();
 }  
@@ -52,21 +49,31 @@ void MasterHandle::update_input_window() {
     if (m_input_window_size >= CONFIG_INPUT_WINDOW_SIZE) return;  // full, wait for inference
 
     float new_sample[CONFIG_INPUT_CHANNELS];
-    if (m_lsl_handle->pull_samples(new_sample) == LSL_ESP32_OK) {
-        for (int ch = 0; ch < CONFIG_INPUT_CHANNELS; ch++) {
-            m_input_window[ch][m_input_window_size] = new_sample[ch];
+
+    while (m_input_window_size < CONFIG_INPUT_WINDOW_SIZE) {
+        //ESP_LOGI("MASTERHandle", "Pulling samples for input window...");
+        if (lsl_esp32_err_t err = m_lsl_handle->pull_samples(new_sample); err == LSL_ESP32_OK) {
+            ESP_LOGI("MASTERHandle", "Success pulling sample for input window");
+            for (int ch = 0; ch < CONFIG_INPUT_CHANNELS; ch++) {
+                m_input_window[ch][m_input_window_size] = new_sample[ch];
+            }
+            m_input_window_size++;
+        }else{
+            if(err != LSL_ESP32_ERR_TIMEOUT) { // timeout is expected when no new samples are available, so only log other errors
+                ESP_LOGE("MASTERHandle", "Error pulling sample for input window: %d", err);
+            }
         }
-        m_input_window_size++;
     }
 }
 
 void MasterHandle::reset_for_next_window() {
+    if (!is_input_window_filled()) return;  // can't reset until first window is filled
     m_input_window_size  = 0;
-    m_output_window_filled = false;
+    m_output_window_size = 0;
 }
 
 void MasterHandle::push_output_window() {
-    if (!m_output_window_filled) {
+    if (!is_output_window_filled()) {
         // Not enough data to push
         return;
     }
@@ -83,10 +90,12 @@ void MasterHandle::push_output_window() {
 
 void MasterHandle::run_inference() {
 
-    if (!m_input_window_filled) {
+    if (!is_input_window_filled()) {
         // Not enough data to run inference
         return;
     }
+
+    ESP_LOGI("MASTERHandle", "Running inference on filled input window");
     uint64_t startTime = esp_timer_get_time();
     bool success = m_model->predict(
         &m_input_window[0][0], CONFIG_INPUT_CHANNELS * CONFIG_INPUT_WINDOW_SIZE, &m_output_window[0][0],
@@ -96,7 +105,7 @@ void MasterHandle::run_inference() {
     if(success) {
         float durationInMs = duration / 1000;
         ESP_LOGI("MASTERHandle", "Inference took: %lld micro seconds, %0.4f ms", duration, durationInMs);
-        m_output_window_filled = true;
+        m_output_window_size = CONFIG_OUTPUT_WINDOW_SIZE;
     } else {
         ESP_LOGE("MASTERHandle", "Inference failed");
     }
