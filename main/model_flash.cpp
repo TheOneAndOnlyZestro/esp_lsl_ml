@@ -5,22 +5,39 @@
 // Flash is erased in sector-sized chunks (4 KB on ESP32).
 static constexpr size_t SECTOR_SIZE = 4096;
 
-const uint8_t* ModelFlash::allocatePointerOnFlash(const char* partition_label) {
-    partition_ = esp_partition_find_first(
+ModelFlash::ModelFlash(const char** partitions, const uint32_t* sizes, size_t count) {
+    partition_labels_ = new char*[count];
+    partition_sizes_ = new uint32_t[count];
+    partition_count_ = count;
+
+    for (size_t i = 0; i < count; i++) {
+        size_t label_len = strlen(partitions[i]) + 1;
+        partition_labels_[i] = new char[label_len];
+        strncpy(partition_labels_[i], partitions[i], label_len);
+        partition_sizes_[i] = sizes[i];
+    }
+}
+const uint8_t* ModelFlash::allocatePointerOnFlash(int partition_index = 0) {
+    if (partition_index < 0 || partition_index >= partition_count_) {
+        ESP_LOGE("ModelFlash", "Invalid partition index: %d", partition_index);
+        return nullptr;
+    }
+    const esp_partition_t* partition_ = esp_partition_find_first(
         ESP_PARTITION_TYPE_DATA,
         ESP_PARTITION_SUBTYPE_ANY,
-        partition_label);
+        static_cast<const char*>(partition_labels_[partition_index]));
 
     if (partition_ == nullptr) {
         printf("ModelFlash: partition '%s' not found in partition table\n",
-               partition_label);
+               partition_labels_[partition_index]);
         return nullptr;
     }
 
     const void* ptr = nullptr;
     
+    esp_partition_mmap_handle_t mmap_handle_ = 0;
     esp_err_t err = esp_partition_mmap(
-        partition_, 0, model_size,
+        partition_, 0, partition_sizes_[partition_index],
         ESP_PARTITION_MMAP_DATA,
         &ptr, &mmap_handle_);
 
@@ -28,9 +45,8 @@ const uint8_t* ModelFlash::allocatePointerOnFlash(const char* partition_label) {
         printf("ModelFlash: mmap failed: %d\n", err);
         return nullptr;
     }
-    mapped_ = true;
-    mapped_ptr_ = static_cast<const uint8_t*>(ptr);
-    return mapped_ptr_;
+
+    return static_cast<const uint8_t*>(ptr);
 
 }
 
@@ -66,9 +82,13 @@ uint8_t* ModelFlash::allocatePointerOnPSRAM(const int size)
     return static_cast<uint8_t*>(ptr);
 }
 
-uint32_t ModelFlash::GetModelSize() const 
+uint32_t ModelFlash::GetModelSize(int partition_index = 0) const 
 {
-    return model_size;
+    if (partition_index < 0 || partition_index >= partition_count_) {
+        ESP_LOGE("ModelFlash", "Invalid partition index: %d", partition_index);
+        return 0;
+    }
+    return partition_sizes_[partition_index];
 }
 
 

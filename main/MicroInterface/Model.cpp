@@ -101,7 +101,7 @@ Model::~Model() {
 }
 
 bool Model::predict(const float** input_data, const int* input_lengths,
-                float** results, int* output_lengths) {
+                float** results, const int* output_lengths) {
     if (!initialized) {
         printf("Cannot predict: model not initialized!\n");
         return false;

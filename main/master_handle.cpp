@@ -9,14 +9,14 @@ MasterHandle::MasterHandle() {
 }  
 
 void MasterHandle::init_model() {
-    m_model_flash = new ModelFlash();
+    m_model_flash = new ModelFlash(model_partitions, model_partition_sizes, 2);
 
-    const uint8_t* mmaped_pointer = m_model_flash->allocatePointerOnFlash("model");
+    const uint8_t* mmaped_pointer = m_model_flash->allocatePointerOnFlash(0);
     if (!mmaped_pointer) {
         ESP_LOGE("MASTERHandle", "Could not initialize mmaped pointer");
         return;
     }
-    uint8_t* psram_model_pointer = m_model_flash->allocatePointerOnPSRAM(m_model_flash->GetModelSize());
+    uint8_t* psram_model_pointer = m_model_flash->allocatePointerOnPSRAM(m_model_flash->GetModelSize(0));
 
     ESP_LOGI("MASTERHandle", "FREE_HEAP,%u",
             (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT));
@@ -25,10 +25,10 @@ void MasterHandle::init_model() {
             (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 
     // Transfer model from flash to PSRAM
-    memcpy(psram_model_pointer, mmaped_pointer, m_model_flash->GetModelSize());
+    memcpy(psram_model_pointer, mmaped_pointer, m_model_flash->GetModelSize(0));
 
     uint64_t startInit = esp_timer_get_time();
-    m_model = new Model(m_model_flash,psram_model_pointer, CONFIG_ARENA_SIZE * 1024);
+    m_model = new Model(m_model_flash,psram_model_pointer, CONFIG_ARENA_SIZE * 1024, 1, 1);
     uint64_t durationinit = esp_timer_get_time() - startInit;
 
     float durationInMs = durationinit / 1000;
@@ -97,9 +97,19 @@ void MasterHandle::run_inference() {
 
     ESP_LOGI("MASTERHandle", "Running inference on filled input window");
     uint64_t startTime = esp_timer_get_time();
-    bool success = m_model->predict(
-        &m_input_window[0][0], CONFIG_INPUT_CHANNELS * CONFIG_INPUT_WINDOW_SIZE, &m_output_window[0][0],
-        CONFIG_OUTPUT_CHANNELS * CONFIG_OUTPUT_WINDOW_SIZE);
+    
+    // Create input pointers which are of size 1 given there is only one input tensors
+    const float* input_ptr = static_cast<const float*>(&m_input_window[0][0]);
+    const float** input_ptrs = &input_ptr; // Array of pointers to input tensors (only 1 in this case)
+    const int* input_lengths = new const int[1]{CONFIG_INPUT_CHANNELS * CONFIG_INPUT_WINDOW_SIZE}; // Array of lengths for each input tensor
+    
+    // Create output pointers which are of size 1 given there is only one output tensors
+    float* output_ptr = static_cast<float*>(&m_output_window[0][0]);
+    float** output_ptrs = &output_ptr; // Array of pointers to output tensors (
+    const int* output_lengths = new const int[1]{CONFIG_OUTPUT_CHANNELS * CONFIG_OUTPUT_WINDOW_SIZE}; // Array of lengths for each output tensor
+    
+    bool success = m_model->predict(input_ptrs, input_lengths, output_ptrs, output_lengths);
+    
     uint64_t duration = esp_timer_get_time() - startTime;
 
     if(success) {

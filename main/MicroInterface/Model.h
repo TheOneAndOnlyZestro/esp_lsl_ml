@@ -37,7 +37,7 @@ public:
     // Destructor — frees arena and interpreter
     ~Model();
 
-    bool predict(const float** input_data, const int* input_lengths, float** results, int* output_lengths);
+    bool predict(const float** input_data, const int* input_lengths, float** results, const int* output_lengths);
 
     bool isInitialized() const { return initialized; }
     size_t getArenaUsedBytes() const;

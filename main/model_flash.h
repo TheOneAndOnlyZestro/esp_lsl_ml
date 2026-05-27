@@ -12,20 +12,17 @@
 
 class ModelFlash {
 public:    
-    ModelFlash() = default;
+    ModelFlash(const char** partitions, const uint32_t* sizes, size_t count);
     ~ModelFlash() {}
 
-    const uint8_t* allocatePointerOnFlash(const char* partition_label);
+    const uint8_t* allocatePointerOnFlash(int partition_index = 0);
     uint8_t* allocatePointerOnPSRAM(const int size);
 
-    uint32_t GetModelSize() const;
+    uint32_t GetModelSize(int partition_index = 0) const;
 private:
-    const esp_partition_t* partition_ = nullptr;
-    uint32_t model_size = 2821448;
-    esp_partition_mmap_handle_t mmap_handle_ = 0;
-
-    const uint8_t* mapped_ptr_ = nullptr;
-    bool mapped_ = false;
+    char** partition_labels_;
+    uint32_t* partition_sizes_;
+    size_t partition_count_;
 };
 
 #endif // MODEL_FLASH_H

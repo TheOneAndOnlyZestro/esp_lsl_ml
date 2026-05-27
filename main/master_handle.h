@@ -26,6 +26,10 @@ class MasterHandle {
         
         int m_input_window_size;
         int m_output_window_size;
+
+        const char* model_partitions[2] = {"model"};
+        const uint32_t model_partition_sizes[2] = {2821448};
+    
     public:
         MasterHandle();
         ~MasterHandle(){};
@@ -35,7 +39,6 @@ class MasterHandle {
 
         void push_output_window();
         void reset_for_next_window();
-
 
         inline bool is_input_window_filled() const { return m_input_window_size >= CONFIG_INPUT_WINDOW_SIZE; }
         inline bool is_output_window_filled() const { return m_output_window_size >= CONFIG_OUTPUT_WINDOW_SIZE; }
