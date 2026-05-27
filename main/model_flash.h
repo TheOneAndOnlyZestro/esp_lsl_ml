@@ -12,7 +12,7 @@
 
 class ModelFlash {
 public:    
-    ModelFlash(const char** partitions, const uint32_t* sizes, size_t count);
+    ModelFlash(char** partitions, const uint32_t* sizes, size_t count);
     ~ModelFlash() {}
 
     const uint8_t* allocatePointerOnFlash(int partition_index = 0);

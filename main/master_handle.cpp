@@ -1,28 +1,41 @@
 #include "master_handle.h"
 
-MasterHandle::MasterHandle(const char** model_partitions, const uint32_t* model_partition_sizes, const int count) {
+MasterHandle::MasterHandle(char** model_partitions, const uint32_t* model_partition_sizes,
+    const uint32_t* input_sizes, const uint32_t* output_sizes ,const int count) {
     m_input_window_size = 0;
     m_output_window_size = 0;
     
-    for(int i = 0; i < count; i++) {
-        this->model_partitions = new char*[count];
-        this->model_partition_sizes = new uint32_t[count];
-        this->partition_count = count;
-
-        for (size_t i = 0; i < count; i++) {
-            size_t label_len = strlen(model_partitions[i]) + 1;
-            this->model_partitions[i] = new char[label_len];
-            strncpy(this->model_partitions[i], model_partitions[i], label_len);
-            this->model_partition_sizes[i] = model_partition_sizes[i];
-        }
+    this->model_partition_sizes = new uint32_t[count];
+    for (int i = 0; i < count; i++) {
+        this->model_partition_sizes[i] = model_partition_sizes[i];
     }
 
+    this->input_sizes = new uint32_t[count];
+    for (int i = 0; i < count; i++) {
+        this->input_sizes[i] = input_sizes[i];
+    }
+
+    this->output_sizes = new uint32_t[count];
+    for (int i = 0; i < count; i++) {
+        this->output_sizes[i] = output_sizes[i];
+    }   
+
+    this->model_partitions = new char*[count];
+    this->partition_count = count;
+
+    for (size_t i = 0; i < count; i++) {
+        size_t label_len = strlen(model_partitions[i]) + 1;
+        this->model_partitions[i] = new char[label_len];
+        strncpy(this->model_partitions[i], model_partitions[i], label_len);
+        this->model_partition_sizes[i] = model_partition_sizes[i];
+    }
+    
     init_models();
     m_lsl_handle = new LSLHandle();
 }  
 
 void MasterHandle::init_models() {
-    m_model_flash = new ModelFlash(static_cast<const char**>(this->model_partitions), 
+    m_model_flash = new ModelFlash(this->model_partitions, 
     static_cast<const uint32_t*>(this->model_partition_sizes), this->partition_count);
 
     for(int i = 0; i < partition_count; i++) {
@@ -45,7 +58,7 @@ void MasterHandle::init_models() {
         memcpy(psram_model_pointer, mmaped_pointer, m_model_flash->GetModelSize(i));
 
         uint64_t startInit = esp_timer_get_time();
-        m_model[i] = new Model(m_model_flash,psram_model_pointer, CONFIG_ARENA_SIZE * 1024, 1, 1);
+        m_model[i] = new Model(m_model_flash,psram_model_pointer, CONFIG_ARENA_SIZE * 1024, input_sizes[i], output_sizes[i]);
         uint64_t durationinit = esp_timer_get_time() - startInit;
 
         float durationInMs = durationinit / 1000;
@@ -251,5 +264,5 @@ void MasterHandle::dual_inference()
     } else {
         ESP_LOGE("MASTERHandle", "Inference failed");
     }
-    
+
 }

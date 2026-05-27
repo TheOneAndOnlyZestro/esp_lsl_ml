@@ -30,10 +30,14 @@ class MasterHandle {
         char** model_partitions;
         uint32_t* model_partition_sizes;
         int partition_count;
+
+        uint32_t* input_sizes;
+        uint32_t* output_sizes;
         // 2821448
     
     public:
-        MasterHandle(const char** model_partitions, const uint32_t* model_partition_sizes, const int count);
+        MasterHandle(char** model_partitions, const uint32_t* model_partition_sizes,
+    const uint32_t* input_sizes, const uint32_t* output_sizes ,const int count);
         ~MasterHandle(){};
 
         void init_models();

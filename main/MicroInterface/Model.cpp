@@ -78,6 +78,9 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
         return;
     }
     printf("TENSORS are ready\n");
+    
+    input = new TfLiteTensor*[input_size];
+    output = new TfLiteTensor*[output_size];
 
     for(int i = 0; i < this->input_size; i++) {
         input[i] = interpreter->input(i);

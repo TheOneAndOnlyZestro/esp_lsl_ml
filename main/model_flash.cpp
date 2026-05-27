@@ -5,7 +5,7 @@
 // Flash is erased in sector-sized chunks (4 KB on ESP32).
 static constexpr size_t SECTOR_SIZE = 4096;
 
-ModelFlash::ModelFlash(const char** partitions, const uint32_t* sizes, size_t count) {
+ModelFlash::ModelFlash(char** partitions, const uint32_t* sizes, size_t count) {
     partition_labels_ = new char*[count];
     partition_sizes_ = new uint32_t[count];
     partition_count_ = count;
@@ -17,7 +17,7 @@ ModelFlash::ModelFlash(const char** partitions, const uint32_t* sizes, size_t co
         partition_sizes_[i] = sizes[i];
     }
 }
-const uint8_t* ModelFlash::allocatePointerOnFlash(int partition_index = 0) {
+const uint8_t* ModelFlash::allocatePointerOnFlash(int partition_index) {
     if (partition_index < 0 || partition_index >= partition_count_) {
         ESP_LOGE("ModelFlash", "Invalid partition index: %d", partition_index);
         return nullptr;
@@ -82,7 +82,7 @@ uint8_t* ModelFlash::allocatePointerOnPSRAM(const int size)
     return static_cast<uint8_t*>(ptr);
 }
 
-uint32_t ModelFlash::GetModelSize(int partition_index = 0) const 
+uint32_t ModelFlash::GetModelSize(int partition_index) const 
 {
     if (partition_index < 0 || partition_index >= partition_count_) {
         ESP_LOGE("ModelFlash", "Invalid partition index: %d", partition_index);
