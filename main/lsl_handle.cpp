@@ -4,7 +4,7 @@ LSLHandle::LSLHandle() :
  m_inlet(nullptr), m_inlet_info(nullptr), m_outlet(nullptr), m_outlet_info(nullptr) {
     init_wifi();
 
-    //init_outlet();
+    init_outlet();
     init_inlet();
  }
 

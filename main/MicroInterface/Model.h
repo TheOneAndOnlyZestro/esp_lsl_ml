@@ -14,8 +14,12 @@ class Model {
 private:
     const tflite::Model* tflite_model = nullptr;
     tflite::MicroInterpreter* interpreter = nullptr;
-    TfLiteTensor* input = nullptr;
-    TfLiteTensor* output = nullptr;
+    
+    TfLiteTensor** input = nullptr;
+    TfLiteTensor** output = nullptr;
+
+    size_t input_size = 0;
+    size_t output_size = 0;
 
     // Pointer to the dynamically allocated memory
     uint8_t* tensor_arena = nullptr;
@@ -28,13 +32,12 @@ private:
     ModelFlash* mflash;
 public:
     // Constructor — override default 80 KB arena if a model needs more
-    Model(ModelFlash* model_flash, const unsigned char* model_data, int arena_size = 80 * 1024);
+    Model(ModelFlash* model_flash, const unsigned char* model_data, int arena_size = 80 * 1024, size_t input_size = 1, size_t output_size = 1);
 
     // Destructor — frees arena and interpreter
     ~Model();
 
-    bool predict(const float* input_data, int input_length,
-                 float* results, int output_length);
+    bool predict(const float** input_data, const int* input_lengths, float** results, int* output_lengths);
 
     bool isInitialized() const { return initialized; }
     size_t getArenaUsedBytes() const;

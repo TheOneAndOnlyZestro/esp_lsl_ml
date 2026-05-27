@@ -6,9 +6,12 @@
 #include "esp_log.h"
 static const char *H = "HEAP";
 
-Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena_size) {
+Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena_size, size_t input_size, size_t output_size) {
     mflash = model_flash;
     this->arena_size = arena_size;
+
+    this->input_size = input_size;
+    this->output_size = output_size;
 
     //uint8_t* tensor_arena_ptr = mflash.initTAPointer();
     tflite::InitializeTarget();
@@ -75,8 +78,14 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
         return;
     }
     printf("TENSORS are ready\n");
-    input  = interpreter->input(0);
-    output = interpreter->output(0);
+
+    for(int i = 0; i < this->input_size; i++) {
+        input[i] = interpreter->input(i);
+    }
+
+    for(int i = 0; i < this->output_size; i++) {
+        output[i] = interpreter->output(i);
+    }
 
     printf("Setup complete. Arena used: %d bytes\n", interpreter->arena_used_bytes());
     initialized = true;
@@ -91,54 +100,62 @@ Model::~Model() {
     }
 }
 
-bool Model::predict(const float* input_data, int input_length,
-                    float* results, int output_length) {
+bool Model::predict(const float** input_data, const int* input_lengths,
+                float** results, int* output_lengths) {
     if (!initialized) {
         printf("Cannot predict: model not initialized!\n");
         return false;
     }
 
-    if (input->type == kTfLiteFloat32) {
-        for (int i = 0; i < input_length; i++) {
-            input->data.f[i] = input_data[i];
+    for(int i =0; i < input_size; i++) {
+        if (input[i]->type == kTfLiteFloat32) {
+        for (int j = 0; j < input_lengths[i]; j++) {
+            input[i]->data.f[j] = input_data[i][j];
         }
-    } else if (input->type == kTfLiteInt8) {
-        // Quantize: normalized_float -> int8
-        // The scale/zero_point here are the TFLite quantization params,
-        for (int i = 0; i < input_length; i++) {
-            const float quantized = roundf(
-                input_data[i] / input->params.scale
-            ) + input->params.zero_point;
-            // Clamp to int8 range to prevent overflow
-            if      (quantized < -128.0f) input->data.int8[i] = -128;
-            else if (quantized >  127.0f) input->data.int8[i] =  127;
-            else                          input->data.int8[i] = (int8_t)quantized;
+        } else if (input[i]->type == kTfLiteInt8) {
+            // Quantize: normalized_float -> int8
+            // The scale/zero_point here are the TFLite quantization params,
+            for (int j = 0; j < input_lengths[i]; j++) {
+                const float quantized = roundf(
+                    input_data[i][j] / input[i]->params.scale
+                ) + input[i]->params.zero_point;
+                // Clamp to int8 range to prevent overflow
+                if      (quantized < -128.0f) input[i]->data.int8[j] = -128;
+                else if (quantized >  127.0f) input[i]->data.int8[j] =  127;
+                else                          input[i]->data.int8[j] = (int8_t)quantized;
+            }
+        } else {
+            printf("Unsupported input tensor type: %d\n", input[i]->type);
+            return false;
         }
-    } else {
-        printf("Unsupported input tensor type: %d\n", input->type);
-        return false;
     }
+    
+
 
     if (interpreter->Invoke() != kTfLiteOk) {
         printf("Invoke() failed!\n");
         return false;
     }
 
-    if (output->type == kTfLiteFloat32) {
-        for (int i = 0; i < output_length; i++) {
-            results[i] = output->data.f[i];
+
+    for(int i =0; i < output_size; i++) {
+        if (output[i]->type == kTfLiteFloat32) {
+        for (int j = 0; j < output_lengths[i]; j++) {
+            results[i][j] = output[i]->data.f[j];
         }
-    } else if (output->type == kTfLiteInt8) {
-        // Dequantize: int8 -> float (still in normalized label space)
-        for (int i = 0; i < output_length; i++) {
-            results[i] = (static_cast<float>(output->data.int8[i])
-                          - output->params.zero_point)
-                         * output->params.scale;
+        } else if (output[i]->type == kTfLiteInt8) {
+            // Dequantize: int8 -> float (still in normalized label space)
+            for (int j = 0; j < output_lengths[i]; j++) {
+                results[i][j] = (static_cast<float>(output[i]->data.int8[j])
+                                - output[i]->params.zero_point)
+                                * output[i]->params.scale;
+            }
+        } else {
+            printf("Unsupported output tensor type: %d\n", output[i]->type);
+            return false;
         }
-    } else {
-        printf("Unsupported output tensor type: %d\n", output->type);
-        return false;
     }
+    
     return true;
 }
 
