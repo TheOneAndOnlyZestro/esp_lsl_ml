@@ -30,8 +30,8 @@ MasterHandle::MasterHandle(char** model_partitions, const uint32_t* model_partit
         this->model_partition_sizes[i] = model_partition_sizes[i];
     }
     
+    //m_lsl_handle = new LSLHandle();
     init_models();
-    m_lsl_handle = new LSLHandle();
 }  
 
 void MasterHandle::init_models() {
@@ -159,10 +159,10 @@ void MasterHandle::dual_inference()
     assert(m_model[0] != nullptr); // Ensure the model is initialized
     assert(m_model[1] != nullptr); // Ensure the second model is initialized
 
-    if (!is_input_window_filled()) {
-        // Not enough data to run inference
-        return;
-    }
+    // if (!is_input_window_filled()) {
+    //     // Not enough data to run inference
+    //     return;
+    // }
 
     ESP_LOGI("MASTERHandle", "Running inference on filled input window");
     uint64_t startTime_first = esp_timer_get_time();
@@ -190,14 +190,13 @@ void MasterHandle::dual_inference()
     }
 
     // Onto second model
-
     uint64_t startTime_second = esp_timer_get_time();
     
     float* second_input_ptr = new float[
         (56 * CONFIG_OUTPUT_WINDOW_SIZE)
         + (2 * 56)
         + (2 * 56)
-    ]; // Assuming the second model takes the first model's output plus two additional inputs of size 56 each
+    ]{0}; // Assuming the second model takes the first model's output plus two additional inputs of size 56 each
     
     const int* second_input_lengths = new const int[3]{
         56 * CONFIG_OUTPUT_WINDOW_SIZE,
@@ -210,7 +209,7 @@ void MasterHandle::dual_inference()
         (CONFIG_OUTPUT_CHANNELS)
         + (2 * 56)
         + (2 * 56)
-    ];
+    ]{0};
 
     const int* intermediate_output_lengths = new const int[3]{
         CONFIG_OUTPUT_CHANNELS,
@@ -221,22 +220,25 @@ void MasterHandle::dual_inference()
     for(int i =0; i < CONFIG_OUTPUT_WINDOW_SIZE; i++) {
         uint64_t intermediateTime_second = esp_timer_get_time();
         // update input to next timestep, h and c (i.e we need to update the second_input_ptr)
-        for(int j =0; j < input_lengths[0]; j++) {
+        ESP_LOGI("MASTERHandle", "Preparing input for second model at time step: %d", i);
+        for(int j =0; j < second_input_lengths[0]; j++) {
+            
             second_input_ptr[j] = output_ptr[j * 56 + i]; 
         }
+        ESP_LOGI("MASTERHandle", "Prepared input for second model at time step: %d", i);
         // update h and c with prev iteration's h and c
         if(i > 0)
         {
-            for(int j = 0; j < input_lengths[1]; j++) {
+            for(int j = 0; j < second_input_lengths[1]; j++) {
                 second_input_ptr[56 * CONFIG_OUTPUT_WINDOW_SIZE + j] = intermediate_output_ptr[CONFIG_OUTPUT_CHANNELS + j];
             }
-            for(int j = 0; j < input_lengths[2]; j++) {
+            for(int j = 0; j < second_input_lengths[2]; j++) {
                 second_input_ptr[56 * CONFIG_OUTPUT_WINDOW_SIZE + (2 * 56) + j] = intermediate_output_ptr[CONFIG_OUTPUT_CHANNELS + (2 * 56) + j];
             }
         }
         success = m_model[1]->predict(second_input_ptr, second_input_lengths, intermediate_output_ptr, intermediate_output_lengths);
         // Transfer the intermediate into the final output buffer for pushing to LSL
-        for(int j = 0; j < CONFIG_OUTPUT_CHANNELS; j++) {
+        for(int j = 0; j < intermediate_output_lengths[0]; j++) {
             m_output_window[j][i] = intermediate_output_ptr[j];
         }   
 
@@ -265,4 +267,11 @@ void MasterHandle::dual_inference()
         ESP_LOGE("MASTERHandle", "Inference failed");
     }
 
+    delete[] input_lengths;              // new'd above
+    delete[] output_ptr;                 // new'd above (first model's output buffer)
+    delete[] output_lengths;             // new'd above
+    delete[] second_input_ptr;           // new'd above
+    delete[] second_input_lengths;       // new'd above
+    delete[] intermediate_output_ptr;    // new'd above
+    delete[] intermediate_output_lengths;// new'd above
 }
