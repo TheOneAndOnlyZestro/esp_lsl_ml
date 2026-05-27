@@ -100,8 +100,8 @@ Model::~Model() {
     }
 }
 
-bool Model::predict(const float** input_data, const int* input_lengths,
-                float** results, const int* output_lengths) {
+bool Model::predict(const float* input_data, const int* input_lengths,
+                float* results, const int* output_lengths) {
     if (!initialized) {
         printf("Cannot predict: model not initialized!\n");
         return false;
@@ -110,14 +110,14 @@ bool Model::predict(const float** input_data, const int* input_lengths,
     for(int i =0; i < input_size; i++) {
         if (input[i]->type == kTfLiteFloat32) {
         for (int j = 0; j < input_lengths[i]; j++) {
-            input[i]->data.f[j] = input_data[i][j];
+            input[i]->data.f[j] = input_data[(i * input_lengths[i]) + j];
         }
         } else if (input[i]->type == kTfLiteInt8) {
             // Quantize: normalized_float -> int8
             // The scale/zero_point here are the TFLite quantization params,
             for (int j = 0; j < input_lengths[i]; j++) {
                 const float quantized = roundf(
-                    input_data[i][j] / input[i]->params.scale
+                    input_data[(i * input_lengths[i]) + j] / input[i]->params.scale
                 ) + input[i]->params.zero_point;
                 // Clamp to int8 range to prevent overflow
                 if      (quantized < -128.0f) input[i]->data.int8[j] = -128;
@@ -141,12 +141,12 @@ bool Model::predict(const float** input_data, const int* input_lengths,
     for(int i =0; i < output_size; i++) {
         if (output[i]->type == kTfLiteFloat32) {
         for (int j = 0; j < output_lengths[i]; j++) {
-            results[i][j] = output[i]->data.f[j];
+            results[(i * output_lengths[i]) + j] = output[i]->data.f[j];
         }
         } else if (output[i]->type == kTfLiteInt8) {
             // Dequantize: int8 -> float (still in normalized label space)
             for (int j = 0; j < output_lengths[i]; j++) {
-                results[i][j] = (static_cast<float>(output[i]->data.int8[j])
+                results[(i * output_lengths[i]) + j] = (static_cast<float>(output[i]->data.int8[j])
                                 - output[i]->params.zero_point)
                                 * output[i]->params.scale;
             }

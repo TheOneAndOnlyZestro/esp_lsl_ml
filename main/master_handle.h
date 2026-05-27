@@ -18,7 +18,7 @@ class MasterHandle {
     private:
         LSLHandle* m_lsl_handle;
 
-        Model* m_model;
+        Model** m_model;
         ModelFlash* m_model_flash;
         // Window buffer
         float m_input_window[CONFIG_INPUT_CHANNELS][CONFIG_INPUT_WINDOW_SIZE];
@@ -27,14 +27,16 @@ class MasterHandle {
         int m_input_window_size;
         int m_output_window_size;
 
-        const char* model_partitions[2] = {"model"};
-        const uint32_t model_partition_sizes[2] = {2821448};
+        char** model_partitions;
+        uint32_t* model_partition_sizes;
+        int partition_count;
+        // 2821448
     
     public:
-        MasterHandle();
+        MasterHandle(const char** model_partitions, const uint32_t* model_partition_sizes, const int count);
         ~MasterHandle(){};
 
-        void init_model();
+        void init_models();
         void update_input_window();
 
         void push_output_window();
@@ -42,5 +44,8 @@ class MasterHandle {
 
         inline bool is_input_window_filled() const { return m_input_window_size >= CONFIG_INPUT_WINDOW_SIZE; }
         inline bool is_output_window_filled() const { return m_output_window_size >= CONFIG_OUTPUT_WINDOW_SIZE; }
+        
         void run_inference();
+
+        void dual_inference();
 };
