@@ -193,13 +193,13 @@ void MasterHandle::dual_inference()
     uint64_t startTime_second = esp_timer_get_time();
     
     float* second_input_ptr = new float[
-        (56 * CONFIG_OUTPUT_WINDOW_SIZE)
+        (56)
         + (2 * 56)
         + (2 * 56)
     ]{0}; // Assuming the second model takes the first model's output plus two additional inputs of size 56 each
     
     const int* second_input_lengths = new const int[3]{
-        56 * CONFIG_OUTPUT_WINDOW_SIZE,
+        56,
         2 * 56,
         2 * 56
     };
@@ -221,19 +221,19 @@ void MasterHandle::dual_inference()
         uint64_t intermediateTime_second = esp_timer_get_time();
         // update input to next timestep, h and c (i.e we need to update the second_input_ptr)
         ESP_LOGI("MASTERHandle", "Preparing input for second model at time step: %d", i);
-        for(int j =0; j < second_input_lengths[0]; j++) {
+        for(int j =0; j < 56; j++) {
             
-            second_input_ptr[j] = output_ptr[j * 56 + i]; 
+            second_input_ptr[j] = output_ptr[j * CONFIG_OUTPUT_WINDOW_SIZE + i]; 
         }
         ESP_LOGI("MASTERHandle", "Prepared input for second model at time step: %d", i);
         // update h and c with prev iteration's h and c
         if(i > 0)
         {
             for(int j = 0; j < second_input_lengths[1]; j++) {
-                second_input_ptr[56 * CONFIG_OUTPUT_WINDOW_SIZE + j] = intermediate_output_ptr[CONFIG_OUTPUT_CHANNELS + j];
+                second_input_ptr[56 + j] = intermediate_output_ptr[CONFIG_OUTPUT_CHANNELS + j];
             }
             for(int j = 0; j < second_input_lengths[2]; j++) {
-                second_input_ptr[56 * CONFIG_OUTPUT_WINDOW_SIZE + (2 * 56) + j] = intermediate_output_ptr[CONFIG_OUTPUT_CHANNELS + (2 * 56) + j];
+                second_input_ptr[56 + (2 * 56) + j] = intermediate_output_ptr[CONFIG_OUTPUT_CHANNELS + (2 * 56) + j];
             }
         }
         success = m_model[1]->predict(second_input_ptr, second_input_lengths, intermediate_output_ptr, intermediate_output_lengths);

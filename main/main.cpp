@@ -12,7 +12,7 @@ void run_app()
     strcpy(model_partitions[1], "model_2");
 
     const uint32_t model_partition_sizes[] = {
-        26376, // Size of first model partition in bytes
+        20272, // Size of first model partition in bytes
         223916  // Size of second model partition in bytes
     };
 
