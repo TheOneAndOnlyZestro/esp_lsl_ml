@@ -83,24 +83,41 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
     output = new TfLiteTensor*[output_size];
 
     for(int i = 0; i < this->input_size; i++) {
+        printf("Input(%d) Type: %d \n", i, interpreter->input(i)->type);
+        printf("Input(%d) Dims: %d \n", i, interpreter->input(i)->dims->size);
+        for (int j =0; j < interpreter->input(i)->dims->size; j++)
+        {
+            printf("Input(%d) Dim (%d): \n", i, interpreter->input(i)->dims->data[j]);
+        }
         input[i] = interpreter->input(i);
     }
 
     for(int i = 0; i < this->output_size; i++) {
+        printf("Output(%d) Type: %d \n", i, interpreter->output(i)->type);
+        printf("Output(%d) Dims: %d \n", i, interpreter->output(i)->dims->size);
+        for (int j =0; j < interpreter->output(i)->dims->size; j++)
+        {
+            printf("Output(%d) Dim (%d): \n", i, interpreter->output(i)->dims->data[j]);
+        }
         output[i] = interpreter->output(i);
     }
 
     printf("Setup complete. Arena used: %d bytes\n", interpreter->arena_used_bytes());
+
     initialized = true;
 }
 
 Model::~Model() {
     if (interpreter != nullptr) {
         delete interpreter;
+        interpreter = nullptr;
     }
     if (tensor_arena != nullptr) {
-        free(tensor_arena);
+        heap_caps_free(tensor_arena);
+        tensor_arena = nullptr;
     }
+    delete[] input;   input = nullptr;
+    delete[] output;  output = nullptr;
 }
 
 bool Model::predict(const float* input_data, const int* input_lengths,
@@ -110,17 +127,21 @@ bool Model::predict(const float* input_data, const int* input_lengths,
         return false;
     }
 
+    int input_offset = 0;
     for(int i =0; i < input_size; i++) {
+        //printf("INPUT Number %d \n", i);
         if (input[i]->type == kTfLiteFloat32) {
         for (int j = 0; j < input_lengths[i]; j++) {
-            input[i]->data.f[j] = input_data[(i * input_lengths[i]) + j];
+            //printf("COPYING FLOAT INPUT Number %d, at index %d \n", i, j);
+            input[i]->data.f[j] = input_data[input_offset + j];
         }
         } else if (input[i]->type == kTfLiteInt8) {
             // Quantize: normalized_float -> int8
             // The scale/zero_point here are the TFLite quantization params,
             for (int j = 0; j < input_lengths[i]; j++) {
+                //printf("COPYING INPUT Number %d, at index %d \n", i, j);
                 const float quantized = roundf(
-                    input_data[(i * input_lengths[i]) + j] / input[i]->params.scale
+                    input_data[input_offset + j] / input[i]->params.scale
                 ) + input[i]->params.zero_point;
                 // Clamp to int8 range to prevent overflow
                 if      (quantized < -128.0f) input[i]->data.int8[j] = -128;
@@ -131,25 +152,27 @@ bool Model::predict(const float* input_data, const int* input_lengths,
             printf("Unsupported input tensor type: %d\n", input[i]->type);
             return false;
         }
+        input_offset += input_lengths[i];
     }
     
 
-
+    //printf("INPUT COPIED \n");
     if (interpreter->Invoke() != kTfLiteOk) {
         printf("Invoke() failed!\n");
         return false;
     }
 
-
+    //printf("OUTPUT BEGIN COPIED \n");
+    int output_offset = 0;
     for(int i =0; i < output_size; i++) {
         if (output[i]->type == kTfLiteFloat32) {
         for (int j = 0; j < output_lengths[i]; j++) {
-            results[(i * output_lengths[i]) + j] = output[i]->data.f[j];
+            results[output_offset + j] = output[i]->data.f[j];
         }
         } else if (output[i]->type == kTfLiteInt8) {
             // Dequantize: int8 -> float (still in normalized label space)
             for (int j = 0; j < output_lengths[i]; j++) {
-                results[(i * output_lengths[i]) + j] = (static_cast<float>(output[i]->data.int8[j])
+                results[output_offset + j] = (static_cast<float>(output[i]->data.int8[j])
                                 - output[i]->params.zero_point)
                                 * output[i]->params.scale;
             }
@@ -157,6 +180,7 @@ bool Model::predict(const float* input_data, const int* input_lengths,
             printf("Unsupported output tensor type: %d\n", output[i]->type);
             return false;
         }
+        output_offset += output_lengths[i];
     }
     
     return true;

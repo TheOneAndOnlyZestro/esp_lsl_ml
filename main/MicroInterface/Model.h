@@ -27,7 +27,7 @@ private:
 
     // Resolver with enough capacity for our benchmarking ops
     tflite::MicroMutableOpResolver<32> resolver;
-
+    
     bool initialized = false;
     ModelFlash* mflash;
 public:

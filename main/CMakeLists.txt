@@ -13,5 +13,7 @@ esp_wifi esp_event
 )
 
 # Put our model on flash
-esptool_py_flash_to_partition(flash "model_1" "${CMAKE_CURRENT_SOURCE_DIR}/First_EMG_TinyML_LiteRT_ConcatFix_int8.tflite")
-esptool_py_flash_to_partition(flash "model_2" "${CMAKE_CURRENT_SOURCE_DIR}/Second_EMG_TinyML_LiteRT_ConcatFix.tflite")
+# esptool_py_flash_to_partition(flash "model_1" "${CMAKE_CURRENT_SOURCE_DIR}/First_EMG_TinyML_LiteRT_ConcatFix_w500_int8.tflite")
+# esptool_py_flash_to_partition(flash "model_2" "${CMAKE_CURRENT_SOURCE_DIR}/Second_EMG_TinyML_LiteRT_ConcatFix_w500_int8.tflite")
+
+esptool_py_flash_to_partition(flash "models" "${CMAKE_CURRENT_SOURCE_DIR}/models.bin")

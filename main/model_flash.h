@@ -1,9 +1,12 @@
 #ifndef MODEL_FLASH_H
 #define MODEL_FLASH_H
 
+#include <stdio.h>
+#include <string.h>
 #include <stddef.h>
 #include <stdint.h>
 
+#include "models_manifest.h"
 #include "esp_err.h"
 #include "esp_partition.h"
 #include "esp_psram.h"
@@ -12,17 +15,11 @@
 
 class ModelFlash {
 public:    
-    ModelFlash(char** partitions, const uint32_t* sizes, size_t count);
+    ModelFlash();
     ~ModelFlash() {}
 
-    const uint8_t* allocatePointerOnFlash(int partition_index = 0);
+    bool allocatePointerOnFlash(const char* partition, const uint8_t** out_ptrs, int count);
     uint8_t* allocatePointerOnPSRAM(const int size);
-
-    uint32_t GetModelSize(int partition_index = 0) const;
-private:
-    char** partition_labels_;
-    uint32_t* partition_sizes_;
-    size_t partition_count_;
 };
 
 #endif // MODEL_FLASH_H
