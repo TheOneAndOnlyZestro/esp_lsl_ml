@@ -20,6 +20,8 @@
         }
     }
     void MasterHandle::init_model(int model_index, int internal_index) {
+
+        int sizes = internal_index == 0 ? 1 : 3;
         // Initialize
         ESP_LOGI("MASTERHandle", "Model %d, size=%u", model_index, MODEL_SIZES[model_index]);
         
@@ -29,7 +31,7 @@
         memcpy(m_psram_model_ptr[internal_index], this->models_ptrs[model_index], MODEL_SIZES[model_index]);
 
         uint64_t startInit = esp_timer_get_time();
-        m_model[internal_index] = new Model(m_model_flash, m_psram_model_ptr[internal_index], CONFIG_ARENA_SIZE * 1024, 1, 1);
+        m_model[internal_index] = new Model(m_model_flash, m_psram_model_ptr[internal_index], CONFIG_ARENA_SIZE * 1024, sizes, sizes);
         uint64_t durationinit = esp_timer_get_time() - startInit;
 
         float durationInMs = durationinit / 1000;
@@ -245,8 +247,8 @@
                 }
             }
 
-            ESP_LOGW("MASTERHandle", "INTER CHECK (1) %0.4f" , second_input_ptr[0]);
-            ESP_LOGW("MASTERHandle", "INTER CHECK (2) %0.4f" , second_input_ptr[58]);
+            //ESP_LOGW("MASTERHandle", "INTER CHECK (1) %0.4f" , second_input_ptr[0]);
+            ESP_LOGW("MASTERHandle", "INTER CHECK (2) %0.4f" , second_input_ptr[0]);
 
             success = m_model[1]->predict(second_input_ptr, second_input_lengths, intermediate_output_ptr, intermediate_output_lengths);
             // Transfer the intermediate into the final output buffer for pushing to LSL

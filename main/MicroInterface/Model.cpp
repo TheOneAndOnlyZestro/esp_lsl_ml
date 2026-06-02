@@ -134,6 +134,10 @@ bool Model::predict(const float* input_data, const int* input_lengths,
         for (int j = 0; j < input_lengths[i]; j++) {
             //printf("COPYING FLOAT INPUT Number %d, at index %d \n", i, j);
             input[i]->data.f[j] = input_data[input_offset + j];
+            if (j == 0)
+                ESP_LOGW("INTERNAL", "FROM FLOAT INPUT 0 %0.4f", input[i]->data.f[j]);
+            if (j == 3)
+                    ESP_LOGW("INTERNAL", "FROM FLOAT INPUT 3 %0.4f", input[i]->data.f[j]);
         }
         } else if (input[i]->type == kTfLiteInt8) {
             // Quantize: normalized_float -> int8
@@ -147,6 +151,12 @@ bool Model::predict(const float* input_data, const int* input_lengths,
                 if      (quantized < -128.0f) input[i]->data.int8[j] = -128;
                 else if (quantized >  127.0f) input[i]->data.int8[j] =  127;
                 else                          input[i]->data.int8[j] = (int8_t)quantized;
+                
+                if (j == 0)
+                    ESP_LOGW("INTERNAL", "FROM INT8 INPUT 0 %0.4f", input[i]->data.int8[j]);
+                
+                if (j == 3)
+                    ESP_LOGW("INTERNAL", "FROM INT8 INPUT 3 %0.4f", input[i]->data.int8[j]);
             }
         } else {
             printf("Unsupported input tensor type: %d\n", input[i]->type);
@@ -165,16 +175,30 @@ bool Model::predict(const float* input_data, const int* input_lengths,
     //printf("OUTPUT BEGIN COPIED \n");
     int output_offset = 0;
     for(int i =0; i < output_size; i++) {
+        ESP_LOGE("INTERNAL", "OUTPUT_SIZE %d", output_size);
         if (output[i]->type == kTfLiteFloat32) {
+            
         for (int j = 0; j < output_lengths[i]; j++) {
             results[output_offset + j] = output[i]->data.f[j];
+            if (j == 0)
+                ESP_LOGW("INTERNAL", "FROM FLOAT OUTPUT PREDICTION 0 %0.4f", output[i]->data.f[j]);
+            if (j == 3)
+                    ESP_LOGW("INTERNAL", "FROM FLOAT OUTPUT PREDICTION 3 %0.4f", output[i]->data.f[j]);
         }
         } else if (output[i]->type == kTfLiteInt8) {
             // Dequantize: int8 -> float (still in normalized label space)
+            ESP_LOGW("INTERNAL", "FROM INT8 OUTPUT PARAM ZERO POINT %d", output[i]->params.zero_point);
+            ESP_LOGW("INTERNAL", "FROM INT8 OUTPUT PARAM SCALE %0.4f", output[i]->params.scale);
             for (int j = 0; j < output_lengths[i]; j++) {
+
                 results[output_offset + j] = (static_cast<float>(output[i]->data.int8[j])
-                                - output[i]->params.zero_point)
-                                * output[i]->params.scale;
+                - output[i]->params.zero_point)
+                * output[i]->params.scale;
+               
+                if(j == 0)
+                    ESP_LOGW("INTERNAL", "FROM INT8 OUTPUT PREDICTION 0 %d", output[i]->data.int8[j]);
+                if (j == 3)
+                    ESP_LOGW("INTERNAL", "FROM INT8 OUTPUT PREDICTION 3 %0.4f", output[i]->data.int8[j]);
             }
         } else {
             printf("Unsupported output tensor type: %d\n", output[i]->type);
