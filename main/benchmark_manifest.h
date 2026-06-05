@@ -6,17 +6,18 @@
 // Layout (float32): [ X: dense|conv|lstm(x|h|c) ][ Y: dense|conv|lstm(h_new|c_new) ]
 // All offsets/sizes below are FLOAT-ELEMENT counts (multiply by 4 for bytes).
 // One entry per individual input/output tensor.
+
 #define X_TENSOR_COUNT 5
 #define Y_TENSOR_COUNT 4
 #define TENSOR_COUNT 9
 
-#define TENSOR_DENSE_IN 0
-#define TENSOR_CONV_IN 1
+#define TENSOR_CONV_IN 0
+#define TENSOR_DENSE_IN 1
 #define TENSOR_LSTM_X 2
 #define TENSOR_LSTM_H 3
 #define TENSOR_LSTM_C 4
-#define TENSOR_DENSE_OUT 5
-#define TENSOR_CONV_OUT 6
+#define TENSOR_CONV_OUT 5
+#define TENSOR_DENSE_OUT 6
 #define TENSOR_LSTM_H_NEW 7
 #define TENSOR_LSTM_C_NEW 8
 
@@ -27,28 +28,28 @@ static const uint32_t Y_TOTAL_ELEMENTS = 72277;
 
 static const uint32_t OFFSETS[TENSOR_COUNT] = {
     // --- X (inputs) ---
-    0, // dense_in (500 floats)
-    500, // conv_in (4000 floats)
+    0, // conv_in (4000 floats)
+    4000, // dense_in (500 floats)
     4500, // lstm_x (56 floats)
     4556, // lstm_h (56 floats)
     4612, // lstm_c (56 floats)
     // --- Y (ground-truth outputs) ---
-    4668, // dense_out (5 floats)
-    4673, // conv_out (72160 floats)
+    4668, // conv_out (72160 floats)
+    76828, // dense_out (5 floats)
     76833, // lstm_h_new (56 floats)
     76889, // lstm_c_new (56 floats)
 };
 
 static const uint32_t SIZES[TENSOR_COUNT] = {
     // --- X (inputs) ---
-    500, // dense_in
     4000, // conv_in
+    500, // dense_in
     56, // lstm_x
     56, // lstm_h
     56, // lstm_c
     // --- Y (ground-truth outputs) ---
-    5, // dense_out
     72160, // conv_out
+    5, // dense_out
     56, // lstm_h_new
     56, // lstm_c_new
 };

@@ -82,7 +82,6 @@ void allocateInputandOutputbuffers(float** input_buffer, float** output_buffer, 
     // Allocate the entire buffer
     *input_buffer = (float*)heap_caps_malloc((*total_input_size) * sizeof(float), MALLOC_CAP_SPIRAM);
 
-    ESP_LOGW("alloc", "ALLOCATED INPUT BUFFER");
     *input_sizes = new int[BENCHMARK_INPUT_SIZES[index]];
 
     //transfer the data
@@ -94,21 +93,17 @@ void allocateInputandOutputbuffers(float** input_buffer, float** output_buffer, 
         memcpy( (*input_buffer) + off, data[index + j], SIZES[index + j] * sizeof(float));
         off += SIZES[index + j];
     }
-    
-    ESP_LOGW("alloc", "COPIED TO INPUT BUFFER");
+
     //Get size of output
     for(int j =0; j < BENCHMARK_OUTPUT_SIZES[index]; j++)
     {
         *total_output_size += SIZES[X_TENSOR_COUNT + index + j];
     }
-    ESP_LOGW("alloc", "SIZE: %d", *total_output_size);
-    ESP_LOGI("PSRAM", "We have %d", (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+
 
     *output_buffer = (float*)heap_caps_malloc(*total_output_size * sizeof(float), MALLOC_CAP_SPIRAM);
     *correct_buffer = (float*)heap_caps_malloc(*total_output_size * sizeof(float), MALLOC_CAP_SPIRAM);
-    
-    ESP_LOGW("alloc", "ALLOCATED OUTPUT BUFFERS");
-    
+        
     *output_sizes = new int[BENCHMARK_OUTPUT_SIZES[index]];
 
     off = 0;
@@ -117,9 +112,12 @@ void allocateInputandOutputbuffers(float** input_buffer, float** output_buffer, 
         //Allocate data on PSRAM
         (*output_sizes)[j] = SIZES[X_TENSOR_COUNT + index + j];
         memcpy(*correct_buffer + off, data[X_TENSOR_COUNT + index + j], SIZES[X_TENSOR_COUNT + index + j] * sizeof(float));
+        // if(j < 5)
+        //     printf("ALLOC: (%d)[%0.4f] \n", j, (*correct_buffer + off)[j]);
         off += SIZES[X_TENSOR_COUNT + index + j];
     }
 
+    
 }
 
 
@@ -158,7 +156,6 @@ void run_testing_benchmark()
         allocateInputandOutputbuffers(&input_buffer, &output_buffer, &correct_buffer, &input_sizes, &output_sizes,
              data, &total_input_size, &total_output_size, i);
 
-        ESP_LOGW("Bench", "ALLOCATED BUFFERS SUCCESSFULLY");
         final_report_size = strlen(final_report);
         snprintf(final_report + final_report_size, 7000 - final_report_size, "Model Index %d\nQuant Type: Float32\n", i);
         
@@ -206,6 +203,8 @@ void run_testing_benchmark()
 
         vTaskDelay(10 / portTICK_PERIOD_MS); // Adjust delay as needed for timing
     }
+
+    ESP_LOGI("FINAL REPORT", "%s", final_report);
 }
 extern "C" void app_main(void) {
     //Disable watchdog

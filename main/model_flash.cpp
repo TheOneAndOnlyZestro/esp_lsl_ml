@@ -34,7 +34,7 @@ bool ModelFlash::allocatePointerOnFlash(const char* partition, const uint8_t** o
     const uint8_t* base8 = static_cast<const uint8_t*>(base);
     for (int i = 0; i < count; i++) {
         uint32_t current_offset = offset_type == OFFSET_TYPE::INT8 ? model_offsets[i] : model_offsets[i] * sizeof(float);
-        ESP_LOGW("FLASH", "Current Offset %llu", (unsigned long long)current_offset);
+        //ESP_LOGW("FLASH", "Current Offset %llu", (unsigned long long)current_offset);
         out_ptrs[i] = base8 + current_offset;
     }
 
@@ -46,10 +46,10 @@ bool ModelFlash::allocatePointerOnFlash(const char* partition, const uint8_t** o
         // TFLite flatbuffer has "TFL3" at byte offset 4
         char ident[5] = {0};
         memcpy(ident, p + 4, 4);
-        ESP_LOGI("BLOB", "model %d @ off=%u size=%u ident='%s' first4=%02x%02x%02x%02x align=%d",
-        i, current_offset, current_size, ident,
-        p[0], p[1], p[2], p[3],
-        (int)((uintptr_t)p & 0x3));
+        // ESP_LOGI("BLOB", "model %d @ off=%u size=%u ident='%s' first4=%02x%02x%02x%02x align=%d",
+        // i, current_offset, current_size, ident,
+        // p[0], p[1], p[2], p[3],
+        // (int)((uintptr_t)p & 0x3));
     }
     return true;
 
@@ -63,9 +63,6 @@ uint8_t* ModelFlash::allocatePointerOnPSRAM(const int size)
         return nullptr;
     }
     size_t psram_size = esp_psram_get_size();
-
-    ESP_LOGI("PSRAM", "We want to allocate %d", size);
-    ESP_LOGI("PSRAM", "We have %d", (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     
     if(size > psram_size)
     {

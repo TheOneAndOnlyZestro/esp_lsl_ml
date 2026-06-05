@@ -15,10 +15,6 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
 ;
 
     tflite::InitializeTarget();
-    //printf("\n--- Initializing TFLite Model ---\n");
-
-    //ESP_LOGW(H, "FREE_HEAP Cont,%u",
-                //(unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
 
     tflite_model = tflite::GetModel(model_data);
     if (tflite_model->version() != TFLITE_SCHEMA_VERSION) {
@@ -27,7 +23,6 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
     }
 
     // 1. Allocate arena on the heap to avoid stack overflow
-
     if(this->inPSRAM)
         tensor_arena = mflash->allocatePointerOnPSRAM(arena_size);
     else
@@ -71,7 +66,7 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
     resolver.AddSub();
     resolver.AddSelect();
     resolver.AddRelu();
-    
+
     //printf("GOING TO ALLOCATE INTERPRETER NOW\n");
     // 3. Build interpreter
     interpreter = new tflite::MicroInterpreter(
@@ -87,26 +82,26 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
     output = new TfLiteTensor*[output_size];
 
     for(int i = 0; i < this->input_size; i++) {
-        printf("Input(%d) Type: %d \n", i, interpreter->input(i)->type);
-        printf("Input(%d) Dims: %d \n", i, interpreter->input(i)->dims->size);
-        for (int j =0; j < interpreter->input(i)->dims->size; j++)
-        {
-            printf("Input(%d) Dim (%d): \n", i, interpreter->input(i)->dims->data[j]);
-        }
+        // printf("Input(%d) Type: %d \n", i, interpreter->input(i)->type);
+        // printf("Input(%d) Dims: %d \n", i, interpreter->input(i)->dims->size);
+        // for (int j =0; j < interpreter->input(i)->dims->size; j++)
+        // {
+        //     printf("Input(%d) Dim (%d): \n", i, interpreter->input(i)->dims->data[j]);
+        // }
         input[i] = interpreter->input(i);
     }
 
     for(int i = 0; i < this->output_size; i++) {
-        printf("Output(%d) Type: %d \n", i, interpreter->output(i)->type);
-        printf("Output(%d) Dims: %d \n", i, interpreter->output(i)->dims->size);
-        for (int j =0; j < interpreter->output(i)->dims->size; j++)
-        {
-            printf("Output(%d) Dim (%d): \n", i, interpreter->output(i)->dims->data[j]);
-        }
+        // printf("Output(%d) Type: %d \n", i, interpreter->output(i)->type);
+        // printf("Output(%d) Dims: %d \n", i, interpreter->output(i)->dims->size);
+        // for (int j =0; j < interpreter->output(i)->dims->size; j++)
+        // {
+        //     printf("Output(%d) Dim (%d): \n", i, interpreter->output(i)->dims->data[j]);
+        // }
         output[i] = interpreter->output(i);
     }
 
-    printf("Setup complete. Arena used: %d bytes\n", interpreter->arena_used_bytes());
+    //printf("Setup complete. Arena used: %d bytes\n", interpreter->arena_used_bytes());
 
     initialized = true;
 }
@@ -130,7 +125,7 @@ Model::~Model() {
 
 bool Model::predict(const float* input_data, const int* input_lengths,
                 float* results, const int* output_lengths) {
-    printf("Tensor Size: %d", input_size);
+    
     if (!initialized) {
         //printf("Cannot predict: model not initialized!\n");
         return false;
@@ -204,10 +199,10 @@ bool Model::predict(const float* input_data, const int* input_lengths,
                 - output[i]->params.zero_point)
                 * output[i]->params.scale;
                
-                if(j == 0)
-                    ESP_LOGW("INTERNAL", "FROM INT8 OUTPUT PREDICTION 0 %d", output[i]->data.int8[j]);
-                if (j == 3)
-                    ESP_LOGW("INTERNAL", "FROM INT8 OUTPUT PREDICTION 3 %0.4f", output[i]->data.int8[j]);
+                // if(j == 0)
+                //     ESP_LOGW("INTERNAL", "FROM INT8 OUTPUT PREDICTION 0 %d", output[i]->data.int8[j]);
+                // if (j == 3)
+                //     ESP_LOGW("INTERNAL", "FROM INT8 OUTPUT PREDICTION 3 %0.4f", output[i]->data.int8[j]);
             }
         } else {
             //printf("Unsupported output tensor type: %d\n", output[i]->type);

@@ -21,7 +21,6 @@ void BenchmarkHandle::init_model(int model_index, bool usePSRAM ,int input_size,
     this->inPSRAM = usePSRAM;
     // Initialize
     ESP_LOGI("MASTERHandle", "Model %d, size=%u", model_index, BENCHMARK_MODEL_SIZES[model_index]);
-
     if(this->inPSRAM)
         m_model_ptr = m_model_flash->allocatePointerOnPSRAM(BENCHMARK_MODEL_SIZES[model_index]);
     else
@@ -52,7 +51,8 @@ float BenchmarkHandle::print_output(const float* output_window, int output_size,
     
     for(int j =0; j < output_size; j++)
     {
-        //printf("(%d)(%d)[%0.4f] \n", i, j, output_window[(i * window_len) + j]);
+        if(j > 10 && j < 15)
+            printf("(%d)[%0.4f],  (%d)[%0.4f]\n", j, output_window[j], j, correct_window[j]);
         // Calculate MSE
         mse += (output_window[j] - correct_window[j]) * 
         (output_window[j] - correct_window[j]);
@@ -69,8 +69,6 @@ void BenchmarkHandle::run_inference(const float* input_ptr, const int* input_siz
 
         int report_size = strlen(report_buffer);
         assert(m_model != nullptr); // Ensure the model is initialized
-
-        ESP_LOGI("MASTERHandle", "input_sizes %d, output sizes %d, input_ptr %0.2f", input_sizes[0], output_sizes[0], input_ptr[0]);
         ESP_LOGI("MASTERHandle", "Running inference on filled input window");
         uint64_t startTime_first = esp_timer_get_time();
         
@@ -80,7 +78,6 @@ void BenchmarkHandle::run_inference(const float* input_ptr, const int* input_siz
 
         if(success) {
             float durationInMs = duration_first / 1000;
-            ESP_LOGI("MASTERHandle", "Inference For First Model took: %lld micro seconds, %0.4f ms", duration_first, durationInMs);
             snprintf(report_buffer + report_size, size - report_size, "0_Model Inf: %lld \xCE\xBCs, %0.2f ms\n", duration_first, durationInMs);
             
         } else {

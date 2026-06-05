@@ -198,9 +198,9 @@ TfLiteStatus MicroInterpreter::PrepareNodeAndRegistrationDataFromFlatbuffer() {
 }
 
 TfLiteStatus MicroInterpreter::AllocateTensors() {
-  MicroPrintf("ANDREW: INSIDE ALLOCATEE done.\n");
+  //MicroPrintf("ANDREW: INSIDE ALLOCATEE done.\n");
   SubgraphAllocations* allocations = allocator_.StartModelAllocation(model_);
-  MicroPrintf("ANDREW: StartModelAllocation done.\n");
+  //MicroPrintf("ANDREW: StartModelAllocation done.\n");
   if (allocations == nullptr) {
     MicroPrintf("Failed starting model allocation.\n");
     initialization_status_ = kTfLiteError;
@@ -228,7 +228,7 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
                                    &scratch_buffer_handles_));
 
   micro_context_.SetScratchBufferHandles(scratch_buffer_handles_);
-  MicroPrintf("ANDREW: INTERPRETER done.\n");
+  //MicroPrintf("ANDREW: INTERPRETER done.\n");
   // TODO(b/162311891): Drop these allocations when the interpreter supports
   // handling buffers from TfLiteEvalTensor.
   input_tensors_ =
@@ -250,7 +250,7 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
       return kTfLiteError;
     }
   }
-  MicroPrintf("ANDREW: INPUT tensors done.\n");
+  //MicroPrintf("ANDREW: INPUT tensors done.\n");
   // TODO(b/162311891): Drop these allocations when the interpreter supports
   // handling buffers from TfLiteEvalTensor.
   output_tensors_ =
@@ -272,7 +272,7 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
       return kTfLiteError;
     }
   }
-  MicroPrintf("ANDREW: OUTPUT tensors done.\n");
+  //MicroPrintf("ANDREW: OUTPUT tensors done.\n");
   TF_LITE_ENSURE_STATUS(Reset());
 
   tensors_allocated_ = true;
