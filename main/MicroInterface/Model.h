@@ -26,13 +26,16 @@ private:
     int arena_size = 0;
 
     // Resolver with enough capacity for our benchmarking ops
-    tflite::MicroMutableOpResolver<32> resolver;
+    tflite::MicroMutableOpResolver<33> resolver;
     
     bool initialized = false;
     ModelFlash* mflash;
+
+    bool inPSRAM;
 public:
     // Constructor — override default 80 KB arena if a model needs more
-    Model(ModelFlash* model_flash, const unsigned char* model_data, int arena_size = 80 * 1024, size_t input_size = 1, size_t output_size = 1);
+    Model(ModelFlash* model_flash, const unsigned char* model_data, int arena_size, 
+        size_t input_size, size_t output_size, bool usePSRAM);
 
     // Destructor — frees arena and interpreter
     ~Model();

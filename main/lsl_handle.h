@@ -1,3 +1,5 @@
+#pragma once
+
 extern "C"{
 #include "lsl_esp32.h"
 #include "wifi_helper.h"

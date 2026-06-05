@@ -6,31 +6,34 @@
 #include "esp_log.h"
 static const char *H = "HEAP";
 
-Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena_size, size_t input_size, size_t output_size) {
+Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena_size, size_t input_size, size_t output_size, bool usePSRAM) {
     mflash = model_flash;
     this->arena_size = arena_size;
-
+    this->inPSRAM = usePSRAM;
     this->input_size = input_size;
     this->output_size = output_size;
+;
 
-    //uint8_t* tensor_arena_ptr = mflash.initTAPointer();
     tflite::InitializeTarget();
-    printf("\n--- Initializing TFLite Model ---\n");
+    //printf("\n--- Initializing TFLite Model ---\n");
 
-    ESP_LOGW(H, "FREE_HEAP Cont,%u",
-                (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+    //ESP_LOGW(H, "FREE_HEAP Cont,%u",
+                //(unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
 
     tflite_model = tflite::GetModel(model_data);
     if (tflite_model->version() != TFLITE_SCHEMA_VERSION) {
-        printf("Model schema mismatch!\n");
+        //printf("Model schema mismatch!\n");
         return;
     }
 
     // 1. Allocate arena on the heap to avoid stack overflow
-    //tensor_arena = (uint8_t*)malloc(arena_size);
-    tensor_arena = mflash->allocatePointerOnPSRAM(arena_size);
+
+    if(this->inPSRAM)
+        tensor_arena = mflash->allocatePointerOnPSRAM(arena_size);
+    else
+        tensor_arena = (uint8_t*)malloc(arena_size);
     if (tensor_arena == nullptr) {
-        printf("Failed to allocate %d bytes for tensor arena!\n", arena_size);
+        //printf("Failed to allocate %d bytes for tensor arena!\n", arena_size);
         return;
     }
 
@@ -67,17 +70,18 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
     resolver.AddSlice();
     resolver.AddSub();
     resolver.AddSelect();
-
-    printf("GOING TO ALLOCATE INTERPRETER NOW\n");
+    resolver.AddRelu();
+    
+    //printf("GOING TO ALLOCATE INTERPRETER NOW\n");
     // 3. Build interpreter
     interpreter = new tflite::MicroInterpreter(
         tflite_model, resolver, tensor_arena, arena_size);
 
     if (interpreter->AllocateTensors() != kTfLiteOk) {
-        printf("AllocateTensors() failed!\n");
+        //printf("AllocateTensors() failed!\n");
         return;
     }
-    printf("TENSORS are ready\n");
+    //printf("TENSORS are ready\n");
     
     input = new TfLiteTensor*[input_size];
     output = new TfLiteTensor*[output_size];
@@ -113,7 +117,11 @@ Model::~Model() {
         interpreter = nullptr;
     }
     if (tensor_arena != nullptr) {
-        heap_caps_free(tensor_arena);
+        if(this->inPSRAM)
+            heap_caps_free(tensor_arena);
+        else
+            free(tensor_arena);
+            
         tensor_arena = nullptr;
     }
     delete[] input;   input = nullptr;
@@ -122,28 +130,29 @@ Model::~Model() {
 
 bool Model::predict(const float* input_data, const int* input_lengths,
                 float* results, const int* output_lengths) {
+    printf("Tensor Size: %d", input_size);
     if (!initialized) {
-        printf("Cannot predict: model not initialized!\n");
+        //printf("Cannot predict: model not initialized!\n");
         return false;
     }
 
     int input_offset = 0;
     for(int i =0; i < input_size; i++) {
-        //printf("INPUT Number %d \n", i);
+        ////printf("INPUT Number %d \n", i);
         if (input[i]->type == kTfLiteFloat32) {
         for (int j = 0; j < input_lengths[i]; j++) {
-            //printf("COPYING FLOAT INPUT Number %d, at index %d \n", i, j);
+            ////printf("COPYING FLOAT INPUT Number %d, at index %d \n", i, j);
             input[i]->data.f[j] = input_data[input_offset + j];
-            if (j == 0)
-                ESP_LOGW("INTERNAL", "FROM FLOAT INPUT 0 %0.4f", input[i]->data.f[j]);
-            if (j == 3)
-                    ESP_LOGW("INTERNAL", "FROM FLOAT INPUT 3 %0.4f", input[i]->data.f[j]);
+            // if (j == 0)
+            //     //ESP_LOGW("INTERNAL", "FROM FLOAT INPUT 0 %0.4f", input[i]->data.f[j]);
+            // if (j == 3)
+            //         //ESP_LOGW("INTERNAL", "FROM FLOAT INPUT 3 %0.4f", input[i]->data.f[j]);
         }
         } else if (input[i]->type == kTfLiteInt8) {
             // Quantize: normalized_float -> int8
             // The scale/zero_point here are the TFLite quantization params,
             for (int j = 0; j < input_lengths[i]; j++) {
-                //printf("COPYING INPUT Number %d, at index %d \n", i, j);
+                ////printf("COPYING INPUT Number %d, at index %d \n", i, j);
                 const float quantized = roundf(
                     input_data[input_offset + j] / input[i]->params.scale
                 ) + input[i]->params.zero_point;
@@ -152,43 +161,43 @@ bool Model::predict(const float* input_data, const int* input_lengths,
                 else if (quantized >  127.0f) input[i]->data.int8[j] =  127;
                 else                          input[i]->data.int8[j] = (int8_t)quantized;
                 
-                if (j == 0)
-                    ESP_LOGW("INTERNAL", "FROM INT8 INPUT 0 %0.4f", input[i]->data.int8[j]);
+                // if (j == 0)
+                //     //ESP_LOGW("INTERNAL", "FROM INT8 INPUT 0 %0.4f", input[i]->data.int8[j]);
                 
-                if (j == 3)
-                    ESP_LOGW("INTERNAL", "FROM INT8 INPUT 3 %0.4f", input[i]->data.int8[j]);
+                // if (j == 3)
+                //     //ESP_LOGW("INTERNAL", "FROM INT8 INPUT 3 %0.4f", input[i]->data.int8[j]);
             }
         } else {
-            printf("Unsupported input tensor type: %d\n", input[i]->type);
+            //printf("Unsupported input tensor type: %d\n", input[i]->type);
             return false;
         }
         input_offset += input_lengths[i];
     }
     
 
-    //printf("INPUT COPIED \n");
+    ////printf("INPUT COPIED \n");
     if (interpreter->Invoke() != kTfLiteOk) {
-        printf("Invoke() failed!\n");
+        //printf("Invoke() failed!\n");
         return false;
     }
 
-    //printf("OUTPUT BEGIN COPIED \n");
+    ////printf("OUTPUT BEGIN COPIED \n");
     int output_offset = 0;
     for(int i =0; i < output_size; i++) {
-        ESP_LOGE("INTERNAL", "OUTPUT_SIZE %d", output_size);
+        ////ESP_LOGE("INTERNAL", "OUTPUT_SIZE %d", output_size);
         if (output[i]->type == kTfLiteFloat32) {
             
         for (int j = 0; j < output_lengths[i]; j++) {
             results[output_offset + j] = output[i]->data.f[j];
-            if (j == 0)
-                ESP_LOGW("INTERNAL", "FROM FLOAT OUTPUT PREDICTION 0 %0.4f", output[i]->data.f[j]);
-            if (j == 3)
-                    ESP_LOGW("INTERNAL", "FROM FLOAT OUTPUT PREDICTION 3 %0.4f", output[i]->data.f[j]);
+            // if (j == 0)
+            //     //ESP_LOGW("INTERNAL", "FROM FLOAT OUTPUT PREDICTION 0 %0.4f", output[i]->data.f[j]);
+            // if (j == 3)
+            //         //ESP_LOGW("INTERNAL", "FROM FLOAT OUTPUT PREDICTION 3 %0.4f", output[i]->data.f[j]);
         }
         } else if (output[i]->type == kTfLiteInt8) {
             // Dequantize: int8 -> float (still in normalized label space)
-            ESP_LOGW("INTERNAL", "FROM INT8 OUTPUT PARAM ZERO POINT %d", output[i]->params.zero_point);
-            ESP_LOGW("INTERNAL", "FROM INT8 OUTPUT PARAM SCALE %0.4f", output[i]->params.scale);
+            ////ESP_LOGW("INTERNAL", "FROM INT8 OUTPUT PARAM ZERO POINT %d", output[i]->params.zero_point);
+            ////ESP_LOGW("INTERNAL", "FROM INT8 OUTPUT PARAM SCALE %0.4f", output[i]->params.scale);
             for (int j = 0; j < output_lengths[i]; j++) {
 
                 results[output_offset + j] = (static_cast<float>(output[i]->data.int8[j])
@@ -201,7 +210,7 @@ bool Model::predict(const float* input_data, const int* input_lengths,
                     ESP_LOGW("INTERNAL", "FROM INT8 OUTPUT PREDICTION 3 %0.4f", output[i]->data.int8[j]);
             }
         } else {
-            printf("Unsupported output tensor type: %d\n", output[i]->type);
+            //printf("Unsupported output tensor type: %d\n", output[i]->type);
             return false;
         }
         output_offset += output_lengths[i];

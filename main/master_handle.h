@@ -9,6 +9,8 @@
 #include "driver/uart.h"
 
 #include "MicroInterface/Model.h"
+
+#include "models_manifest.h"
 #include "model_flash.h"
 
 #include "model_flash.h"
@@ -43,7 +45,7 @@ class MasterHandle {
         void init_models(int model_1_index, int model_2_index);
         void update_input_window();
 
-        void print_output(const float* output_window, int window_len, const float* correct_window);
+        float print_output(const float* output_window, int window_len, const float* correct_window);
 
         void push_output_window();
         void reset_for_next_window();
@@ -54,5 +56,6 @@ class MasterHandle {
         void clear_models();
         void run_inference();
 
-        void dual_inference(const float* input_ptr, int input_window_size, float* output_ptr, int output_window_size);
+        void dual_inference(const float* input_ptr, int input_window_size, float* output_ptr, int output_window_size,
+        char* report_buffer, int size);
 };

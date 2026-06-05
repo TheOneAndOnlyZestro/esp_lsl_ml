@@ -13,7 +13,8 @@
         m_model_flash = new ModelFlash();
 
         this->models_ptrs = new const uint8_t*[MODEL_COUNT];
-        bool success = m_model_flash->allocatePointerOnFlash(this->models_partition, this->models_ptrs, MODEL_COUNT);
+        bool success = m_model_flash->allocatePointerOnFlash(this->models_partition, this->models_ptrs, MODEL_COUNT,
+             MODEL_OFFSETS, MODEL_SIZES);
         if (!success) {
                 ESP_LOGE("MASTERHandle", "Could not initialize mmaped pointers");
                 return;
@@ -23,7 +24,7 @@
 
         int sizes = internal_index == 0 ? 1 : 3;
         // Initialize
-        ESP_LOGI("MASTERHandle", "Model %d, size=%u", model_index, MODEL_SIZES[model_index]);
+        //ESP_LOGI("MASTERHandle", "Model %d, size=%u", model_index, MODEL_SIZES[model_index]);
         
         m_psram_model_ptr[internal_index] = m_model_flash->allocatePointerOnPSRAM(MODEL_SIZES[model_index]);
 
@@ -31,15 +32,18 @@
         memcpy(m_psram_model_ptr[internal_index], this->models_ptrs[model_index], MODEL_SIZES[model_index]);
 
         uint64_t startInit = esp_timer_get_time();
-        m_model[internal_index] = new Model(m_model_flash, m_psram_model_ptr[internal_index], CONFIG_ARENA_SIZE * 1024, sizes, sizes);
+        
+        m_model[internal_index] = new Model(m_model_flash, m_psram_model_ptr[internal_index],
+             CONFIG_ARENA_SIZE * 1024, sizes, sizes, true);
+
         uint64_t durationinit = esp_timer_get_time() - startInit;
 
         float durationInMs = durationinit / 1000;
 
-        ESP_LOGI("MASTERHandle", "MODEL TOOK: %lld micro seconds, %0.4f ms, to init", durationinit, durationInMs);
+        //ESP_LOGI("MASTERHandle", "MODEL TOOK: %lld micro seconds, %0.4f ms, to init", durationinit, durationInMs);
 
         if (m_model[internal_index]->isInitialized()) {
-            ESP_LOGI("MASTERHandle", "MODEL INTIALIZED SUCCESSFULLY");
+            //ESP_LOGI("MASTERHandle", "MODEL INTIALIZED SUCCESSFULLY");
         } else {
                 ESP_LOGE("MASTERHandle", "Model was not initialized successfully");
             
@@ -73,17 +77,16 @@
         // }
     }
 
-    void MasterHandle::print_output(const float* output_window, int window_len, const float* correct_window)
+    float MasterHandle::print_output(const float* output_window, int window_len, const float* correct_window)
     {
-        printf("OUTPUT DATA ================= \n");
+        printf("OUTPUT DATA (First 5 samples in each channel) ================= \n");
 
         float mse = 0;
         for(int i =0; i < CONFIG_OUTPUT_CHANNELS; i++)
         {
             for(int j =0; j < window_len; j++)
             {
-                printf("(%d)(%d)[%0.4f] \n", i, j, output_window[(i * window_len) + j]);
-
+                //printf("(%d)(%d)[%0.4f] \n", i, j, output_window[(i * window_len) + j]);
                 // Calculate MSE
                 mse += (output_window[(i * window_len) + j] - correct_window[(i * window_len) + j]) * 
                 (output_window[(i * window_len) + j] - correct_window[(i * window_len) + j]);
@@ -92,7 +95,7 @@
         }
 
         mse /= (CONFIG_OUTPUT_CHANNELS * window_len);
-        printf("MSE Output: %0.4f \n", mse);
+        return mse;
     }
     void MasterHandle::reset_for_next_window() {
         if (!is_input_window_filled()) return;  // can't reset until first window is filled
@@ -166,8 +169,10 @@
             ESP_LOGI("MASTERhandle", "2 Models Cleared Successfully");
 
     }
-    void MasterHandle::dual_inference(const float* input_ptr, int input_window_size, float* output_ptr, int output_window_size)
+    void MasterHandle::dual_inference(const float* input_ptr, int input_window_size, float* output_ptr, int output_window_size
+    ,char* report_buffer, int size)
     {
+        int report_size = strlen(report_buffer);
         assert(m_model[0] != nullptr); // Ensure the model is initialized
         assert(m_model[1] != nullptr); // Ensure the second model is initialized
 
@@ -192,10 +197,12 @@
         
         uint64_t duration_first = esp_timer_get_time() - startTime_first;
 
-        ESP_LOGW("MASTERHandle", "OUTPUT CHECK %0.4f" ,first_output_ptr[0]);
+        
         if(success) {
             float durationInMs = duration_first / 1000;
             ESP_LOGI("MASTERHandle", "Inference For First Model took: %lld micro seconds, %0.4f ms", duration_first, durationInMs);
+            snprintf(report_buffer + report_size, size - report_size, "0_Model Inf: %lld \xCE\xBCs, %0.2f ms\n", duration_first, durationInMs);
+            
             m_output_window_size = output_window_size;
         } else {
             ESP_LOGE("MASTERHandle", "Inference failed");
@@ -247,9 +254,6 @@
                 }
             }
 
-            //ESP_LOGW("MASTERHandle", "INTER CHECK (1) %0.4f" , second_input_ptr[0]);
-            ESP_LOGW("MASTERHandle", "INTER CHECK (2) %0.4f" , second_input_ptr[0]);
-
             success = m_model[1]->predict(second_input_ptr, second_input_lengths, intermediate_output_ptr, intermediate_output_lengths);
             // Transfer the intermediate into the final output buffer for pushing to LSL
             for(int j = 0; j < intermediate_output_lengths[0]; j++) {
@@ -258,27 +262,37 @@
 
             uint64_t duration_intermediate = esp_timer_get_time() - intermediateTime_second;
             if(success) {
-                //float durationInMs = duration_intermediate / 1000;
+                float durationInMs = duration_intermediate / 1000;
                 //ESP_LOGI("MASTERHandle", "Inference For Second Model, time_step: %d took: %lld micro seconds, %0.4f ms",
                 //i, duration_intermediate, durationInMs);
+                if (i == 1)
+                {
+                    report_size = strlen(report_buffer);
+                    snprintf(report_buffer + report_size, size - report_size, "1_Model tInf: %lld \xCE\xBCs, %0.2f ms\n",duration_intermediate, durationInMs);
+
+                }
                 m_output_window_size++;
             } else {
                 ESP_LOGE("MASTERHandle", "Inference failed @ time_step: %d", i);
             }
         }
 
-        ESP_LOGW("MASTERHandle", "OUTPUT CHECK (2) %0.4f" , output_ptr[0]);
-        ESP_LOGW("MASTERHandle", "OUTPUT CHECK (3) %0.4f" , intermediate_output_ptr[0]);
-        ESP_LOGW("MASTERHandle", "OUTPUT CHECK (3) %0.4f" , intermediate_output_ptr[2]);
         uint64_t duration_second = esp_timer_get_time() - startTime_second;
 
         if(success) {
             float durationInMs = duration_second / 1000;
-            ESP_LOGI("MASTERHandle", "Inference For Second Model took: %lld micro seconds, %0.4f ms", duration_second, durationInMs);
+            //ESP_LOGI("MASTERHandle", "Inference For Second Model took: %lld micro seconds, %0.4f ms", duration_second, durationInMs);
+            report_size = strlen(report_buffer);
+            snprintf(report_buffer + report_size, size - report_size, "1_Model Inf: %lld \xCE\xBCs, %0.2f ms\n",duration_second, durationInMs);
+
+
             m_output_window_size = output_window_size;
         } else {
             ESP_LOGE("MASTERHandle", "Inference failed");
         }
+        float durationInMs = (duration_second + duration_first)/1000;
+        report_size = strlen(report_buffer);
+        snprintf(report_buffer + report_size, size - report_size, "Model Inf: %lld \xCE\xBCs, %0.2f ms\n\n",duration_second + duration_first, durationInMs);
 
         delete[] input_lengths;              // new'd above
         delete[] first_output_ptr;                 // new'd above (first model's output buffer)

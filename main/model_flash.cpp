@@ -5,7 +5,8 @@
 static constexpr size_t SECTOR_SIZE = 4096;
 
 ModelFlash::ModelFlash() {}
-bool ModelFlash::allocatePointerOnFlash(const char* partition, const uint8_t** out_ptrs, int count) {
+bool ModelFlash::allocatePointerOnFlash(const char* partition, const uint8_t** out_ptrs, int count,
+     const uint32_t* model_offsets, const uint32_t* model_sizes, OFFSET_TYPE offset_type) {
     const esp_partition_t* partition_ = esp_partition_find_first(
         ESP_PARTITION_TYPE_DATA,
         ESP_PARTITION_SUBTYPE_ANY,
@@ -32,16 +33,21 @@ bool ModelFlash::allocatePointerOnFlash(const char* partition, const uint8_t** o
 
     const uint8_t* base8 = static_cast<const uint8_t*>(base);
     for (int i = 0; i < count; i++) {
-        out_ptrs[i] = base8 + MODEL_OFFSETS[i];
+        uint32_t current_offset = offset_type == OFFSET_TYPE::INT8 ? model_offsets[i] : model_offsets[i] * sizeof(float);
+        ESP_LOGW("FLASH", "Current Offset %llu", (unsigned long long)current_offset);
+        out_ptrs[i] = base8 + current_offset;
     }
 
-    for (int i = 0; i < MODEL_COUNT; i++) {
-        const uint8_t* p = base8 + MODEL_OFFSETS[i];
+    for (int i = 0; i < count; i++) {
+        uint32_t current_offset = offset_type == OFFSET_TYPE::INT8 ? model_offsets[i] : model_offsets[i] * sizeof(float);
+        uint32_t current_size = offset_type == OFFSET_TYPE::INT8 ? model_sizes[i] : model_sizes[i] * sizeof(float);
+       
+        const uint8_t* p = base8 + current_offset;
         // TFLite flatbuffer has "TFL3" at byte offset 4
         char ident[5] = {0};
         memcpy(ident, p + 4, 4);
         ESP_LOGI("BLOB", "model %d @ off=%u size=%u ident='%s' first4=%02x%02x%02x%02x align=%d",
-        i, MODEL_OFFSETS[i], MODEL_SIZES[i], ident,
+        i, current_offset, current_size, ident,
         p[0], p[1], p[2], p[3],
         (int)((uintptr_t)p & 0x3));
     }
