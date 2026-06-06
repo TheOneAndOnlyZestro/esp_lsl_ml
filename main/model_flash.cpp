@@ -6,8 +6,9 @@ static constexpr size_t SECTOR_SIZE = 4096;
 
 ModelFlash::ModelFlash() {}
 bool ModelFlash::allocatePointerOnFlash(const char* partition, const uint8_t** out_ptrs, int count,
-     const uint32_t* model_offsets, const uint32_t* model_sizes, OFFSET_TYPE offset_type) {
-    const esp_partition_t* partition_ = esp_partition_find_first(
+    const uint32_t* model_offsets, const uint32_t* model_sizes, OFFSET_TYPE offset_type) {
+    
+        const esp_partition_t* partition_ = esp_partition_find_first(
         ESP_PARTITION_TYPE_DATA,
         ESP_PARTITION_SUBTYPE_ANY,
         partition);

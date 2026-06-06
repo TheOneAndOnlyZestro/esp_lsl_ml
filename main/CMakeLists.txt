@@ -5,7 +5,7 @@ SRCS
     "benchmark_handle.cpp"
     "lsl_handle.cpp"
 
-INCLUDE_DIRS "."
+INCLUDE_DIRS "." "./binary_manifests"
 
 REQUIRES driver esp_timer spi_flash 
 esp_driver_uart esp_partition esp_psram 
@@ -17,6 +17,7 @@ esp_wifi esp_event
 # esptool_py_flash_to_partition(flash "model_1" "${CMAKE_CURRENT_SOURCE_DIR}/First_EMG_TinyML_LiteRT_ConcatFix_w500_int8.tflite")
 # esptool_py_flash_to_partition(flash "model_2" "${CMAKE_CURRENT_SOURCE_DIR}/Second_EMG_TinyML_LiteRT_ConcatFix_w500_int8.tflite")
 
-esptool_py_flash_to_partition(flash "models" "${CMAKE_CURRENT_SOURCE_DIR}/models.bin")
-esptool_py_flash_to_partition(flash "benchmark_models" "${CMAKE_CURRENT_SOURCE_DIR}/benchmark_models.bin")
-esptool_py_flash_to_partition(flash "benchmark_data" "${CMAKE_CURRENT_SOURCE_DIR}/benchmark_sample_data.bin")
+# esptool_py_flash_to_partition(flash "models" "${CMAKE_CURRENT_SOURCE_DIR}/models.bin")
+
+esptool_py_flash_to_partition(flash "benchmark_models" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/all/models_0.bin")
+esptool_py_flash_to_partition(flash "benchmark_data" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/all/brute_data_0.bin")

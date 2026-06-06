@@ -41,8 +41,8 @@ class MasterHandle {
         ~MasterHandle(){};
 
         void init_model_refs();
-        void init_model(int model_index, int internal_index);
-        void init_models(int model_1_index, int model_2_index);
+        void init_model(int model_index, int internal_index, char* report_buffer, int size);
+        void init_models(int model_1_index, int model_2_index, char* report_buffer, int size);
         void update_input_window();
 
         float print_output(const float* output_window, int window_len, const float* correct_window);

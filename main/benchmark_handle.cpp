@@ -17,7 +17,8 @@ void BenchmarkHandle::init_model_refs()
             return;
     }
 }
-void BenchmarkHandle::init_model(int model_index, bool usePSRAM ,int input_size, int output_size) {
+void BenchmarkHandle::init_model(int model_index, bool usePSRAM ,int input_size, int output_size
+,char* report_buffer, int size) {
     this->inPSRAM = usePSRAM;
     // Initialize
     ESP_LOGI("MASTERHandle", "Model %d, size=%u", model_index, BENCHMARK_MODEL_SIZES[model_index]);
@@ -26,11 +27,16 @@ void BenchmarkHandle::init_model(int model_index, bool usePSRAM ,int input_size,
     else
         m_model_ptr = static_cast<uint8_t*>(malloc(BENCHMARK_MODEL_SIZES[model_index]));
 
+    
+    int report_size = strlen(report_buffer);
+    snprintf(report_buffer + report_size, size - report_size, "0_Model Model_Size: %luB\n",
+    (unsigned long)BENCHMARK_MODEL_SIZES[model_index]);
+
     // Transfer model from flash to PSRAM
     memcpy(m_model_ptr, this->models_ptrs[model_index], BENCHMARK_MODEL_SIZES[model_index]);
 
     uint64_t startInit = esp_timer_get_time();
-    m_model = new Model(m_model_flash, m_model_ptr, CONFIG_ARENA_SIZE * 1024, input_size, output_size, this->inPSRAM);
+    m_model = new Model(m_model_flash, m_model_ptr, CONFIG_ARENA_SIZE * 1024, input_size, output_size, this->inPSRAM, report_buffer, size);
     uint64_t durationinit = esp_timer_get_time() - startInit;
 
     float durationInMs = durationinit / 1000;
@@ -67,17 +73,17 @@ float BenchmarkHandle::print_output(const float* output_window, int output_size,
 void BenchmarkHandle::run_inference(const float* input_ptr, const int* input_sizes, float* output_ptr, int* output_sizes
         ,char* report_buffer, int size) {
 
-        int report_size = strlen(report_buffer);
-        assert(m_model != nullptr); // Ensure the model is initialized
-        ESP_LOGI("MASTERHandle", "Running inference on filled input window");
-        uint64_t startTime_first = esp_timer_get_time();
-        
-        bool success = m_model->predict(input_ptr, input_sizes, output_ptr, output_sizes);
-        
-        uint64_t duration_first = esp_timer_get_time() - startTime_first;
-
+            assert(m_model != nullptr); // Ensure the model is initialized
+            ESP_LOGI("MASTERHandle", "Running inference on filled input window");
+            uint64_t startTime_first = esp_timer_get_time();
+            
+            bool success = m_model->predict(input_ptr, input_sizes, output_ptr, output_sizes);
+            
+            uint64_t duration_first = esp_timer_get_time() - startTime_first;
+            
         if(success) {
             float durationInMs = duration_first / 1000;
+            int report_size = strlen(report_buffer);
             snprintf(report_buffer + report_size, size - report_size, "0_Model Inf: %lld \xCE\xBCs, %0.2f ms\n", duration_first, durationInMs);
             
         } else {

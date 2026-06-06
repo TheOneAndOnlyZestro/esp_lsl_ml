@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "benchmark_models_manifest.h"
+#include "binary_manifests/all/models_manifest_0.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -34,7 +34,8 @@ class BenchmarkHandle {
         ~BenchmarkHandle(){};
 
         void init_model_refs();
-        void init_model(int model_index, bool usePSRAM, int input_size, int output_size);
+        void init_model(int model_index, bool usePSRAM,
+             int input_size, int output_size, char* report_buffer, int size);
 
         float print_output(const float* output_window, int output_size, const float* correct_window);
 

@@ -6,7 +6,8 @@
 #include "esp_log.h"
 static const char *H = "HEAP";
 
-Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena_size, size_t input_size, size_t output_size, bool usePSRAM) {
+Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena_size, 
+        size_t input_size, size_t output_size, bool usePSRAM,char* report_buffer, int size) {
     mflash = model_flash;
     this->arena_size = arena_size;
     this->inPSRAM = usePSRAM;
@@ -32,7 +33,7 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
         return;
     }
 
-    // 2. Register ops
+    // 2. Register op
     resolver.AddFullyConnected();
     resolver.AddConv2D();
     resolver.AddStridedSlice();
@@ -66,16 +67,23 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
     resolver.AddSub();
     resolver.AddSelect();
     resolver.AddRelu();
+    resolver.AddBroadcastTo();
 
     //printf("GOING TO ALLOCATE INTERPRETER NOW\n");
     // 3. Build interpreter
     interpreter = new tflite::MicroInterpreter(
         tflite_model, resolver, tensor_arena, arena_size);
-
-    if (interpreter->AllocateTensors() != kTfLiteOk) {
-        //printf("AllocateTensors() failed!\n");
-        return;
-    }
+    
+    
+        
+        if (interpreter->AllocateTensors() != kTfLiteOk) {
+            //printf("AllocateTensors() failed!\n");
+            return;
+        }
+        
+    int report_size = strlen(report_buffer);
+    snprintf(report_buffer + report_size, size - report_size, "0_Model Arena_Size: %zuB\n",
+    interpreter->arena_used_bytes());
     //printf("TENSORS are ready\n");
     
     input = new TfLiteTensor*[input_size];

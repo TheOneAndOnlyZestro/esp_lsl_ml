@@ -20,7 +20,7 @@
                 return;
         }
     }
-    void MasterHandle::init_model(int model_index, int internal_index) {
+    void MasterHandle::init_model(int model_index, int internal_index, char* report_buffer, int size) {
 
         int sizes = internal_index == 0 ? 1 : 3;
         // Initialize
@@ -34,7 +34,7 @@
         uint64_t startInit = esp_timer_get_time();
         
         m_model[internal_index] = new Model(m_model_flash, m_psram_model_ptr[internal_index],
-             CONFIG_ARENA_SIZE * 1024, sizes, sizes, true);
+             CONFIG_ARENA_SIZE * 1024, sizes, sizes, true, report_buffer, size);
 
         uint64_t durationinit = esp_timer_get_time() - startInit;
 
@@ -50,10 +50,10 @@
         }
     }
 
-    void MasterHandle::init_models(int model_1_index, int model_2_index)
+    void MasterHandle::init_models(int model_1_index, int model_2_index, char* report_buffer, int size)
     {
-        init_model(model_1_index, 0);
-        init_model(model_2_index, 1);
+        init_model(model_1_index, 0, report_buffer, size);
+        init_model(model_2_index, 1, report_buffer, size);
     }
 
     void MasterHandle::update_input_window() {
