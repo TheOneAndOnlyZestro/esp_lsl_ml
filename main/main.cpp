@@ -1,7 +1,7 @@
 #include "master_handle.h"
 #include "benchmark_handle.h"
 #include "window_data.h"
-#include "binary_manifests/conv_all/manifest_0.h"
+#include "binary_manifests/dense_for_espnn/manifest_0.h"
 #include "OptimizedNativeLSTM.h"
 #include "weights.h"
 #define REPORT_MAX 20000
@@ -218,7 +218,48 @@ void run_testing_benchmark()
         total_input_size = 0;
         total_output_size = 0;
         
+        if (BENCHMARK_MODEL_SIZES[index] > 150000 || BENCHMARK_MODEL_SIZES[index + 1] > 150000)
+        {
+            // Don't allocate on SRAM
+            final_report_size = strlen(final_report);
+            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Index %d\nQuant Type: Float32\n", i);
+            
+            final_report_size = strlen(final_report);
+            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model Model_Size: TOO_LARGE B\n");
 
+            final_report_size = strlen(final_report);
+            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model Arena_Size: TOO_LARGE B\n");
+
+            final_report_size = strlen(final_report);
+            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model init: TOO_LARGE \xCE\xBCs, TOO_LARGE ms\n");
+
+            final_report_size = strlen(final_report);
+            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model Inf: TOO_LARGE \xCE\xBCs, TOO_LARGE ms\n");
+            
+            final_report_size = strlen(final_report);
+            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: TOO_LARGE \n\n");
+
+            // Don't allocate on SRAM
+            final_report_size = strlen(final_report);
+            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Index %d\nQuant Type: Int8\n", i);
+            
+            final_report_size = strlen(final_report);
+            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model Model_Size: TOO_LARGE B\n");
+
+            final_report_size = strlen(final_report);
+            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model Arena_Size: TOO_LARGE B\n");
+
+            final_report_size = strlen(final_report);
+            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model init: TOO_LARGE \xCE\xBCs, TOO_LARGE ms\n");
+
+            final_report_size = strlen(final_report);
+            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model Inf: TOO_LARGE \xCE\xBCs, TOO_LARGE ms\n");
+            
+            final_report_size = strlen(final_report);
+            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: TOO_LARGE \n\n");
+            
+            continue;
+        }
         // TEST with normal ram
         allocateInputandOutputbuffers(&input_buffer, &output_buffer, &correct_buffer, &input_sizes, &output_sizes,
              data, &total_input_size, &total_output_size, i, false);
@@ -296,8 +337,9 @@ void run_optimized()
           nullptr, &weights[0], nullptr,
            h_features, weights_scale, nullptr);  
     
+    lstm->calculate_per_ch_M(x_scale, y_scale);
     uint64_t startTime_first = esp_timer_get_time();
-    lstm->run_inference(x, x_zeropoint, x_scale, y, y_zeropoint, y_scale);
+    lstm->run_inference(x, x_zeropoint, y, y_zeropoint);
     uint64_t duration_first = esp_timer_get_time() - startTime_first;
 
     ESP_LOGI("OPTIMIZED", "took  %lld \xCE\xBCs", duration_first);
@@ -314,6 +356,7 @@ extern "C" void app_main(void) {
     ESP_LOGE("MAIN", "FREE_HEAP_CONT_START,%u",
                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
     
-    //run_optimized();
+    
     run_testing_benchmark();
+    run_optimized();
 }

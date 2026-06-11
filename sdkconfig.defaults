@@ -1,0 +1,21 @@
+# Partition / flash / PSRAM (already working)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# PSRAM via heap_caps only (your old mode)
+CONFIG_SPIRAM_USE_CAP_ALLOCATOR=y
+
+# CPU 240 MHz
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# Main task stack — use whatever value you had; 32KB is safe given
+# the ~20KB frame visible in your backtrace
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
+
+# Watchdogs off
+CONFIG_ESP_TASK_WDT_INIT=n
+CONFIG_ESP_INT_WDT=n

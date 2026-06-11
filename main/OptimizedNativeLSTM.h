@@ -15,6 +15,8 @@ private:
     float* m_x_weight_scale;
     float* m_x_bias_scale; 
 
+    int32_t* m_mults;
+    int32_t* m_shifts;
     // 4 * hidden_size = 4 * m_h_features
 
     int8_t* m_h_weights; // size = h_size * h_size * 4 for i,o,g,f gates
@@ -40,10 +42,9 @@ public:
     void run_inference(
         const int8_t* x,
         const int32_t x_zeropoint,
-        const float x_scale,
-    
         int8_t* y,
-        const int32_t y_zeropoint,
-        const float y_scale);
+        const int32_t y_zeropoint);
+
+    void calculate_per_ch_M(const float x_scale, const float y_scale);
     ~OptimizedNativeLSTM();
 };

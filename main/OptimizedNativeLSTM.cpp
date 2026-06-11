@@ -102,14 +102,32 @@ void OptimizedNativeLSTM::set_x_h_weights_and_bias(
     memcpy(this->m_h_weight_scale, h_weight_scale, this->m_h_features * 4 * sizeof(float));
 }
 
+void OptimizedNativeLSTM::calculate_per_ch_M(const float x_scale, const float y_scale)
+{
+    m_shifts = new int32_t[this->m_h_features * 4];
+    m_mults = new int32_t[this->m_h_features * 4];
+    for (size_t i = 0; i < this->m_h_features * 4; i++)
+        {
+            //printf("weight scale %0.4f\n", m_x_weight_scale[i]);
+            float M = (x_scale * m_x_weight_scale[i]) / y_scale;
+            m_shifts[i] = 0;
+            while (M < 0.5f)
+            { M *= 2; m_shifts[i]--; }
+            while (M >= 1.0f) 
+            { M *= 0.5f;m_shifts[i]++; }
+            // M in range between [0.5, 1.0[ 
+            // M * (2 ^ 31) range 0.5 * 2^31 - 2 ^ 31
+            int64_t q = (int64_t)(M * (float)(1LL << 31) + 0.5f);
+            if (q > INT32_MAX) q = INT32_MAX;
+
+            m_mults[i] = (int32_t)q;
+        }
+}
 void OptimizedNativeLSTM::run_inference(
        const int8_t* x,
         const int32_t x_zeropoint,
-        const float x_scale,
-    
         int8_t* y,
-        const int32_t y_zeropoint,
-        const float y_scale
+        const int32_t y_zeropoint
     )
 {
     // x_hat = matmul(x_weights, x) + x_bias : fc(input_channels = x_features, output_channels = h_features * 4)
@@ -128,26 +146,10 @@ void OptimizedNativeLSTM::run_inference(
     // x = (x_features)
 
     // get array of per channel mult and shifts
-    int32_t* out_shifts = new int32_t[this->m_h_features * 4];
-    int32_t* out_mults = new int32_t[this->m_h_features * 4];
+    
 
     //printf("BEGIN mult calculation\n");
-    for (size_t i = 0; i < this->m_h_features * 4; i++)
-    {
-        //printf("weight scale %0.4f\n", m_x_weight_scale[i]);
-        float M = (x_scale * m_x_weight_scale[i]) / y_scale;
-        out_shifts[i] = 0;
-        while (M < 0.5f)
-        { M *= 2; out_shifts[i]--; }
-        while (M >= 1.0f) 
-        { M *= 0.5f;out_shifts[i]++; }
-        // M in range between [0.5, 1.0[ 
-        // M * (2 ^ 31) range 0.5 * 2^31 - 2 ^ 31
-        int64_t q = (int64_t)(M * (float)(1LL << 31) + 0.5f);
-        if (q > INT32_MAX) q = INT32_MAX;
-
-        out_mults[i] = (int32_t)q;
-    }
+    
     //printf("END mult calculation\n");
     // for(int i =0; i < this->m_h_features * 4; i++)
     // {
@@ -166,14 +168,14 @@ void OptimizedNativeLSTM::run_inference(
     // }
     
     //int8_t* x_gates = new int8_t[this->m_h_features * 4];
-    uint64_t startTime_first = esp_timer_get_time();
+    // uint64_t startTime_first = esp_timer_get_time();
     esp_nn_fully_connected_per_ch_s8(
         x, x_zeropoint, this->m_x_features,
         this->m_x_weights, 0, nullptr, y,
-        this->m_h_features * 4, y_zeropoint, out_shifts, out_mults,
+        this->m_h_features * 4, y_zeropoint, m_shifts, m_mults,
         -127, 127);
-    uint64_t duration_first = esp_timer_get_time() - startTime_first;
+    // uint64_t duration_first = esp_timer_get_time() - startTime_first;
     
-    printf("TIME FOR OP ONLY:  %lld \xCE\xBCs\n", duration_first);
+    // printf("TIME FOR OP ONLY:  %lld \xCE\xBCs\n", duration_first);
 
 }
