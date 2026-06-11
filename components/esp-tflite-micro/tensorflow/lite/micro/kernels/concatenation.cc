@@ -156,7 +156,7 @@ TfLiteStatus ConcatenationPrepare(TfLiteContext* context, TfLiteNode* node) {
 
   // This implementation does not support large number of input tensors
   const int num_inputs = NumInputs(node);
-  TF_LITE_KERNEL_LOG(context, "Concatenation node has %d inputs", num_inputs);
+  //TF_LITE_KERNEL_LOG(context, "Concatenation node has %d inputs", num_inputs);
   TF_LITE_ENSURE(context, num_inputs <= kMaxInputNum);
   
   // Calculate OpData.

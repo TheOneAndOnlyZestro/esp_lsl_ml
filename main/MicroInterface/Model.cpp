@@ -29,7 +29,7 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
     else
         tensor_arena = (uint8_t*)malloc(arena_size);
     if (tensor_arena == nullptr) {
-        //printf("Failed to allocate %d bytes for tensor arena!\n", arena_size);
+        printf("Failed to allocate %d bytes for tensor arena!\n", arena_size);
         return;
     }
 
@@ -179,10 +179,14 @@ bool Model::predict(const float* input_data, const int* input_lengths,
     
 
     ////printf("INPUT COPIED \n");
+    //uint64_t startTime_first = esp_timer_get_time();
     if (interpreter->Invoke() != kTfLiteOk) {
         //printf("Invoke() failed!\n");
         return false;
     }
+    //uint64_t duration_first = esp_timer_get_time() - startTime_first;
+    
+    //printf("TIME FOR OP ONLY:  %lld \xCE\xBCs\n", duration_first);
 
     ////printf("OUTPUT BEGIN COPIED \n");
     int output_offset = 0;

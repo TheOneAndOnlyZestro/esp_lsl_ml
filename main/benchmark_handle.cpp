@@ -36,11 +36,14 @@ void BenchmarkHandle::init_model(int model_index, bool usePSRAM ,int input_size,
     memcpy(m_model_ptr, this->models_ptrs[model_index], BENCHMARK_MODEL_SIZES[model_index]);
 
     uint64_t startInit = esp_timer_get_time();
-    m_model = new Model(m_model_flash, m_model_ptr, CONFIG_ARENA_SIZE * 1024, input_size, output_size, this->inPSRAM, report_buffer, size);
+    m_model = new Model(m_model_flash, m_model_ptr, (this->inPSRAM? CONFIG_ARENA_SIZE: 120) * 1024, input_size, output_size, this->inPSRAM, report_buffer, size);
     uint64_t durationinit = esp_timer_get_time() - startInit;
 
     float durationInMs = durationinit / 1000;
-
+    
+    report_size = strlen(report_buffer);
+    snprintf(report_buffer + report_size, size - report_size, "0_Model init: %lld \xCE\xBCs, %0.2f ms\n", durationinit, durationInMs);
+    
     ESP_LOGI("MASTERHandle", "MODEL TOOK: %lld micro seconds, %0.4f ms, to init", durationinit, durationInMs);
     if (m_model->isInitialized()) {
         ESP_LOGI("MASTERHandle", "MODEL INTIALIZED SUCCESSFULLY");
@@ -57,8 +60,8 @@ float BenchmarkHandle::print_output(const float* output_window, int output_size,
     
     for(int j =0; j < output_size; j++)
     {
-        if(j > 10 && j < 15)
-            printf("(%d)[%0.4f],  (%d)[%0.4f]\n", j, output_window[j], j, correct_window[j]);
+        if(j< 5)
+        printf("(%d)[%0.4f],  (%d)[%0.4f]\n", j, output_window[j], j, correct_window[j]);
         // Calculate MSE
         mse += (output_window[j] - correct_window[j]) * 
         (output_window[j] - correct_window[j]);

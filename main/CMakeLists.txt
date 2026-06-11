@@ -4,13 +4,14 @@ SRCS
     "main.cpp" "Microinterface/Model.cpp" "model_flash.cpp"
     "benchmark_handle.cpp"
     "lsl_handle.cpp"
+    "OptimizedNativeLSTM.cpp"
 
 INCLUDE_DIRS "." "./binary_manifests"
 
 REQUIRES driver esp_timer spi_flash 
-esp_driver_uart esp_partition esp_psram 
-liblsl_esp32 esp-tflite-micro nvs_flash
-esp_wifi esp_event
+    esp_driver_uart esp_partition esp_psram 
+    liblsl_esp32 esp-tflite-micro nvs_flash
+    esp_wifi esp_event espressif__esp-nn
 )
 
 # Put our model on flash
@@ -19,5 +20,5 @@ esp_wifi esp_event
 
 # esptool_py_flash_to_partition(flash "models" "${CMAKE_CURRENT_SOURCE_DIR}/models.bin")
 
-esptool_py_flash_to_partition(flash "benchmark_models" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/all/models_0.bin")
-esptool_py_flash_to_partition(flash "benchmark_data" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/all/brute_data_0.bin")
+esptool_py_flash_to_partition(flash "benchmark_models" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/conv_all/models_0.bin")
+esptool_py_flash_to_partition(flash "benchmark_data" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/conv_all/brute_data_0.bin")

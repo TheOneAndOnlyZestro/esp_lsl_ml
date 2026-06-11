@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <math.h>  // sqrtf, roundf
+#include <esp_timer.h>
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/system_setup.h"

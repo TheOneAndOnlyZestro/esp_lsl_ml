@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "binary_manifests/all/models_manifest_0.h"
+#include "binary_manifests/conv_all/models_manifest_0.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
