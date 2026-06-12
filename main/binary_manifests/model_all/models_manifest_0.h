@@ -7,12 +7,12 @@
 //   first  block model index = (cfg * 4) + 0 (f32) / + 2 (int8)
 //   second block model index = (cfg * 4) + 1 (f32) / + 3 (int8)
 
-#define BENCHMARK_MODEL_COUNT 80
-#define BENCHMARK_CONFIG_COUNT 20
-#define BENCHMARK_MODELS_PER_CONFIG 4
+#define MODEL_COUNT 80
+#define CONFIG_COUNT 20
+#define MODELS_PER_CONFIG 4
 
 // Number of input tensors per model file (1 = first block, 3 = second block)
-static const uint32_t BENCHMARK_INPUT_SIZES[BENCHMARK_MODEL_COUNT] = {
+static const uint32_t INPUT_SIZES[MODEL_COUNT] = {
     1, // 00_w0050_s1_a_first_float32_first_emg_x1_8_50_p50_50_1.tflite
     3, // 00_w0050_s1_b_second_float32_second_emg_x1_8_50_p50_50_1.tflite
     1, // 00_w0050_s1_c_first_int8_first_emg_x1_8_50_p50_50_1.tflite
@@ -96,7 +96,7 @@ static const uint32_t BENCHMARK_INPUT_SIZES[BENCHMARK_MODEL_COUNT] = {
 };
 
 // Number of output tensors per model file (1 = first block, 3 = second block)
-static const uint32_t BENCHMARK_OUTPUT_SIZES[BENCHMARK_MODEL_COUNT] = {
+static const uint32_t OUTPUT_SIZES[MODEL_COUNT] = {
     1, // 00_w0050_s1_a_first_float32_first_emg_x1_8_50_p50_50_1.tflite
     3, // 00_w0050_s1_b_second_float32_second_emg_x1_8_50_p50_50_1.tflite
     1, // 00_w0050_s1_c_first_int8_first_emg_x1_8_50_p50_50_1.tflite
@@ -179,7 +179,7 @@ static const uint32_t BENCHMARK_OUTPUT_SIZES[BENCHMARK_MODEL_COUNT] = {
     3, // 19_w0500_s5_d_second_int8_second_emg_x1_8_500_p500_500_5.tflite
 };
 
-static const uint32_t BENCHMARK_MODEL_OFFSETS[BENCHMARK_MODEL_COUNT] = {
+static const uint32_t MODEL_OFFSETS[MODEL_COUNT] = {
     0, // 00_w0050_s1_a_first_float32_first_emg_x1_8_50_p50_50_1.tflite (26376 bytes)
     26384, // 00_w0050_s1_b_second_float32_second_emg_x1_8_50_p50_50_1.tflite (230748 bytes)
     257136, // 00_w0050_s1_c_first_int8_first_emg_x1_8_50_p50_50_1.tflite (20272 bytes)
@@ -262,7 +262,7 @@ static const uint32_t BENCHMARK_MODEL_OFFSETS[BENCHMARK_MODEL_COUNT] = {
     9469552, // 19_w0500_s5_d_second_int8_second_emg_x1_8_500_p500_500_5.tflite (248816 bytes)
 };
 
-static const uint32_t BENCHMARK_MODEL_SIZES[BENCHMARK_MODEL_COUNT] = {
+static const uint32_t MODEL_SIZES[MODEL_COUNT] = {
     26376, // 00_w0050_s1_a_first_float32_first_emg_x1_8_50_p50_50_1.tflite
     230748, // 00_w0050_s1_b_second_float32_second_emg_x1_8_50_p50_50_1.tflite
     20272, // 00_w0050_s1_c_first_int8_first_emg_x1_8_50_p50_50_1.tflite

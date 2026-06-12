@@ -55,13 +55,13 @@ bool ModelFlash::allocatePointerOnFlash(const char* partition, const uint8_t** o
     return true;
 
 }
-bool allocatePointerOnFlashXY(const char* partition,
+bool ModelFlash::allocatePointerOnFlashXY(const char* partition,
         const uint32_t base_x, const uint8_t** out_ptrs_x, 
         const uint32_t base_y, const uint8_t** out_ptrs_y,
         int count,
         const uint32_t* x_offsets,
         const uint32_t* y_offsets,
-        OFFSET_TYPE offset_type = OFFSET_TYPE::FLOAT32)
+        OFFSET_TYPE offset_type)
 {
     const esp_partition_t* partition_ = esp_partition_find_first(
     ESP_PARTITION_TYPE_DATA,

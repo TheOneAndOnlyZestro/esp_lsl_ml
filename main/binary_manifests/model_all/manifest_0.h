@@ -13,20 +13,20 @@
 #define DATA_BIN_TOTAL_BYTES 198000u
 
 // Per-config metadata (for reporting / sanity checks)
-static const uint32_t WINDOW_LENS[20] = { 50, 50, 100, 100, 150, 150, 200, 200, 250, 250, 300, 300, 350, 350, 400, 400, 450, 450, 500, 500 };
-static const uint32_t STEPS[20] = { 1, 5, 1, 5, 1, 5, 1, 5, 1, 5, 1, 5, 1, 5, 1, 5, 1, 5, 1, 5 };
-static const uint32_t OUT_LENS[20] = { 25, 25, 50, 50, 75, 75, 100, 100, 125, 125, 150, 150, 175, 175, 200, 200, 225, 225, 250, 250 };
+static const uint32_t MAIN_WINDOW_LENS[20] = { 50, 50, 100, 100, 150, 150, 200, 200, 250, 250, 300, 300, 350, 350, 400, 400, 450, 450, 500, 500 };
+static const uint32_t MAIN_STEPS[20] = { 1, 5, 1, 5, 1, 5, 1, 5, 1, 5, 1, 5, 1, 5, 1, 5, 1, 5, 1, 5 };
+static const uint32_t MAIN_OUT_LENS[20] = { 25, 25, 50, 50, 75, 75, 100, 100, 125, 125, 150, 150, 175, 175, 200, 200, 225, 225, 250, 250 };
 
 // Floats fed to the second model per call (= 56 * step)
-static const uint32_t INTERMEDIATE_SIZE[20] = { 56, 280, 56, 280, 56, 280, 56, 280, 56, 280, 56, 280, 56, 280, 56, 280, 56, 280, 56, 280 };
+static const uint32_t MAIN_INTERMEDIATE_SIZE[20] = { 56, 280, 56, 280, 56, 280, 56, 280, 56, 280, 56, 280, 56, 280, 56, 280, 56, 280, 56, 280 };
 
 // Float-index offsets into the X region; last entry = total X floats
-static const uint32_t X_OFFSETS[21] = { 0, 400, 800, 1600, 2400, 3600, 4800, 6400, 8000, 10000, 12000, 14400, 16800, 19600, 22400, 25600, 28800, 32400, 36000, 40000, 44000 };
-static const uint32_t X_SIZES[20] = { 400, 400, 800, 800, 1200, 1200, 1600, 1600, 2000, 2000, 2400, 2400, 2800, 2800, 3200, 3200, 3600, 3600, 4000, 4000 };
+static const uint32_t MAIN_X_OFFSETS[21] = { 0, 400, 800, 1600, 2400, 3600, 4800, 6400, 8000, 10000, 12000, 14400, 16800, 19600, 22400, 25600, 28800, 32400, 36000, 40000, 44000 };
+static const uint32_t MAIN_X_SIZES[20] = { 400, 400, 800, 800, 1200, 1200, 1600, 1600, 2000, 2000, 2400, 2400, 2800, 2800, 3200, 3200, 3600, 3600, 4000, 4000 };
 
 // Float-index offsets into the Y region; last entry = total Y floats
-static const uint32_t Y_OFFSETS[21] = { 0, 50, 100, 200, 300, 450, 600, 800, 1000, 1250, 1500, 1800, 2100, 2450, 2800, 3200, 3600, 4050, 4500, 5000, 5500 };
-static const uint32_t Y_SIZES[20] = { 50, 50, 100, 100, 150, 150, 200, 200, 250, 250, 300, 300, 350, 350, 400, 400, 450, 450, 500, 500 };
+static const uint32_t MAIN_Y_OFFSETS[21] = { 0, 50, 100, 200, 300, 450, 600, 800, 1000, 1250, 1500, 1800, 2100, 2450, 2800, 3200, 3600, 4050, 4500, 5000, 5500 };
+static const uint32_t MAIN_Y_SIZES[20] = { 50, 50, 100, 100, 150, 150, 200, 200, 250, 250, 300, 300, 350, 350, 400, 400, 450, 450, 500, 500 };
 
 // Payloads live in data.bin (flashed partition). Map them with:
 //   const float* X_DATA = (const float*)(base + X_REGION_BYTE_OFFSET);

@@ -307,6 +307,7 @@ void MasterHandle::dual_inference(const float* input_ptr, int input_size,
                                   int intermediate_size, int first_out_len,
                                   char* report_buffer, int size)
 {
+
     int report_size = strlen(report_buffer);
     assert(m_model[0] != nullptr); // Ensure the first model is initialized
     assert(m_model[1] != nullptr); // Ensure the second model is initialized
@@ -326,6 +327,13 @@ void MasterHandle::dual_inference(const float* input_ptr, int input_size,
              input_size, output_size, intermediate_size, step, out_len, first_out_len);
  
     // FIRST MODEL =====================================================
+    
+    // for(int j =0; j < input_size; j++)
+    // {
+    //     // Calculate MSE
+    //     printf("FIRST DUAL (%d)[%0.4f]\n", j, input_ptr[j]);
+    // }
+
     uint64_t startTime_first = esp_timer_get_time();
  
     const int* input_lengths = new const int[1]{ input_size };
@@ -336,7 +344,10 @@ void MasterHandle::dual_inference(const float* input_ptr, int input_size,
     bool success = m_model[0]->predict(input_ptr, input_lengths, first_output_ptr, output_lengths);
  
     uint64_t duration_first = esp_timer_get_time() - startTime_first;
- 
+    
+
+    
+
     if (success) {
         float durationInMs = duration_first / 1000;
         ESP_LOGI("MASTERHandle", "Inference For First Model took: %lld micro seconds, %0.4f ms",

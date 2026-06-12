@@ -1,10 +1,13 @@
 #include "master_handle.h"
 #include "benchmark_handle.h"
-#include "window_data.h"
+//#include "window_data.h"
 #include "binary_manifests/dense_for_espnn/manifest_0.h"
-#include "binary_manifests/model_all/manifest_0.h"
 #include "OptimizedNativeLSTM.h"
 #include "weights.h"
+
+
+#include "binary_manifests/model_all/manifest_0.h"
+#include "binary_manifests/model_all/models_manifest_0.h"
 #define REPORT_MAX 20000
 
 void run_app()
@@ -23,81 +26,102 @@ void run_app()
     const uint8_t** x_data = new const uint8_t*[DATA_CONFIG_COUNT];
     const uint8_t** y_data = new const uint8_t*[DATA_CONFIG_COUNT];
     
-    bool success = mf->allocatePointerOnFlashXY(
+
+    // for(int j =0; j < 400; j++)
+    // {
+    //     // Calculate MSE
+    //     printf("X_DATA CHECK (%d)[%0.4f]\n", j, x_data[0][]);
+    // }
+    mf->allocatePointerOnFlashXY(
     "benchmark_data",
     X_REGION_BYTE_OFFSET,
     x_data,
     Y_REGION_BYTE_OFFSET,
     y_data,
     DATA_CONFIG_COUNT,
-    X_OFFSETS,
-    Y_OFFSETS,
+    MAIN_X_OFFSETS,
+    MAIN_Y_OFFSETS,
     OFFSET_TYPE::FLOAT32);
     
     float mse = 0;
     
     uint32_t max_output_size = 0;
     for (int i = 0; i < DATA_CONFIG_COUNT; i++) {
-        if (Y_SIZES[i] > max_output_size) max_output_size = Y_SIZES[i];
+        if (MAIN_Y_SIZES[i] > max_output_size) max_output_size = MAIN_Y_SIZES[i];
     }
+
     float* output_window = new float[max_output_size];
-    const uint8_t** models_on_flash = new const uint8_t*[BENCHMARK_MODEL_COUNT];
+    float* correct_window = new float[max_output_size];
+    uint32_t max_input_size = 0;
+    for (int i = 0; i < DATA_CONFIG_COUNT; i++) {
+        if (MAIN_X_SIZES[i] > max_input_size) max_input_size = MAIN_X_SIZES[i];
+    }
+
+    float* input_window = new float[max_input_size];
+    const uint8_t** models_on_flash = new const uint8_t*[MODEL_COUNT];
     
     bool success = mf->allocatePointerOnFlash("benchmark_models", models_on_flash, 
-        BENCHMARK_MODEL_COUNT, BENCHMARK_MODEL_OFFSETS, OFFSET_TYPE::INT8);
-        if (!success) {
-            ESP_LOGE("MAIN", "Could not initialize mmaped pointers");
-            return;
-        }
+    MODEL_COUNT, MODEL_OFFSETS, OFFSET_TYPE::INT8);
+    if (!success) {
+        ESP_LOGE("MAIN", "Could not initialize mmaped pointers");
+        return;
+    }
         
-    MasterHandle* master_handle = new MasterHandle(BENCHMARK_MODEL_COUNT,
+    MasterHandle* master_handle = new MasterHandle(MODEL_COUNT,
         models_on_flash,
-        BENCHMARK_INPUT_SIZES,
-        BENCHMARK_OUTPUT_SIZES, 
-        BENCHMARK_MODEL_SIZES);
+        INPUT_SIZES,
+        OUTPUT_SIZES, 
+        MODEL_SIZES);
 
-    for(int i =0; i < BENCHMARK_CONFIG_COUNT; i++)
+    for(int i =0; i < CONFIG_COUNT; i++)
     {
-        const int input_size        = (int)X_SIZES[i];
-        const int output_size       = (int)Y_SIZES[i];
-        const int intermediate_size = (int)INTERMEDIATE_SIZE[i];
-        const int first_out_len     = (int)OUT_LENS[i];
+        const int input_size        = (int)MAIN_X_SIZES[i];
+        const int output_size       = (int)MAIN_Y_SIZES[i];
+        const int intermediate_size = (int)MAIN_INTERMEDIATE_SIZE[i];
+        const int first_out_len     = (int)MAIN_OUT_LENS[i];
         const int out_len           = output_size / CONFIG_OUTPUT_CHANNELS;
+        
+        memcpy(input_window, x_data[i], input_size * sizeof(float));
+        memcpy(correct_window, y_data[i], output_size * sizeof(float));
 
         final_report_size = strlen(final_report);
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Window %ld\nQuant Type: Float32\n", WINDOW_LENS[i]);
+        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Window %ld\nQuant Type: Float32\n", MAIN_WINDOW_LENS[i]);
     
         ESP_LOGI("MAIN", "Infenencing Config (%d) Float32", i);
         master_handle->init_models((i*4), (i*4) + 1, final_report, final_report_size);
-        // TODO: put a condition so that we only run inference when the input window is full 
-        master_handle->dual_inference(&X_DATA[X_OFFSETS[i]], input_size,
-                                      output_window, output_size,
+
+
+        //allocate data from flash onto sram
+        master_handle->dual_inference(&input_window[0], input_size,
+                                      &output_window[0], output_size,
                                       intermediate_size, first_out_len,
                                       &final_report[0], REPORT_MAX);
         
-        mse = master_handle->print_output(output_window, output_size, &(Y_DATA[Y_OFFSETS[i]]));
+        mse = master_handle->print_output(output_window, output_size, &correct_window[0]);
         
         master_handle->clear_models();
         
         final_report_size = strlen(final_report);
+
         snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: %0.4f\n", mse);
 
         vTaskDelay(10 / portTICK_PERIOD_MS); // Adjust delay as needed for timing
         
         
         final_report_size = strlen(final_report);
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Window %ld\nQuant Type: Int8\n", WINDOW_LENS[i]);
+        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Window %ld\nQuant Type: Int8\n", MAIN_WINDOW_LENS[i]);
         
         // For INT8
         ESP_LOGI("MAIN", "Infenencing Config (%d) Int8", i);
         master_handle->init_models((i*4) + 2, (i*4) + 3, final_report, final_report_size);
 
-        master_handle->dual_inference(&X_DATA[X_OFFSETS[i]], input_size,
-                                      output_window, output_size,
+        master_handle->dual_inference(&input_window[0], input_size,
+                                      &output_window[0], output_size,
                                       intermediate_size, first_out_len,
                                       &final_report[0], REPORT_MAX);
+        
+        mse = master_handle->print_output(output_window, output_size, &correct_window[0]);
 
-        mse = master_handle->print_output(output_window, out_len, &Y_DATA[Y_OFFSETS[i]]);
         master_handle->clear_models();
 
         final_report_size = strlen(final_report);

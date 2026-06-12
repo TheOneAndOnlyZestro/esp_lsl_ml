@@ -23,5 +23,5 @@ REQUIRES driver esp_timer spi_flash
 #esptool_py_flash_to_partition(flash "benchmark_models" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/dense_for_espnn/models_0.bin")
 #esptool_py_flash_to_partition(flash "benchmark_data" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/dense_for_espnn/brute_data_0.bin")
 
-esptool_py_flash_to_partition(flash "benchmark_models" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/model_all/models_0.bin")
-esptool_py_flash_to_partition(flash "benchmark_data" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/model_all/data.bin")
+#esptool_py_flash_to_partition(flash "benchmark_models" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/model_all/models_0.bin")
+#esptool_py_flash_to_partition(flash "benchmark_data" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/model_all/data.bin")

@@ -76,11 +76,11 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
     
     
         
-        if (interpreter->AllocateTensors() != kTfLiteOk) {
-            //printf("AllocateTensors() failed!\n");
-            return;
-        }
-        
+    if (interpreter->AllocateTensors() != kTfLiteOk) {
+        //printf("AllocateTensors() failed!\n");
+        return;
+    }
+    
     int report_size = strlen(report_buffer);
     snprintf(report_buffer + report_size, size - report_size, "0_Model Arena_Size: %zuB\n",
     interpreter->arena_used_bytes());
@@ -178,16 +178,23 @@ bool Model::predict(const float* input_data, const int* input_lengths,
     }
     
 
+    // for(int i =0; i < input_lengths[0]; i++)
+    // {
+    //      printf("FIRST-IN-MODEL (%d)[%0.4f]\n", i, input[0]->data.f[i]);
+    // }
     ////printf("INPUT COPIED \n");
     //uint64_t startTime_first = esp_timer_get_time();
     if (interpreter->Invoke() != kTfLiteOk) {
-        //printf("Invoke() failed!\n");
+        printf("Invoke() failed!\n");
         return false;
     }
     //uint64_t duration_first = esp_timer_get_time() - startTime_first;
     
     //printf("TIME FOR OP ONLY:  %lld \xCE\xBCs\n", duration_first);
-
+    // for(int i =0; i < output_lengths[0]; i++)
+    // {
+    //      printf("FIRST-OUT-MODEL (%d)[%0.4f]\n", i, output[0]->data.f[i]);
+    // }
     ////printf("OUTPUT BEGIN COPIED \n");
     int output_offset = 0;
     for(int i =0; i < output_size; i++) {
