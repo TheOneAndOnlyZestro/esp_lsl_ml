@@ -2,39 +2,81 @@
 #include "benchmark_handle.h"
 #include "window_data.h"
 #include "binary_manifests/dense_for_espnn/manifest_0.h"
+#include "binary_manifests/model_all/manifest_0.h"
 #include "OptimizedNativeLSTM.h"
 #include "weights.h"
 #define REPORT_MAX 20000
+
 void run_app()
 {
-    MasterHandle* master_handle = new MasterHandle("models");
     
     // We need to now do a for loop for all models 
-
+    
     // Step 1: Pull the data from lsl into the windowed buffer
     // Step 2: Run inference on the windowed buffer which should put the appropriate output into the output buffer
     // Step 3: Push the output data buffer to the LSL outlet
-
+    
     char final_report[REPORT_MAX] = {0};
     int final_report_size = strlen(final_report);
-    float* output_window = new float[CONFIG_OUTPUT_CHANNELS * (int)(WINDOW_LENS[9]/2) ];
-
+    
+    ModelFlash* mf = new ModelFlash();
+    const uint8_t** x_data = new const uint8_t*[DATA_CONFIG_COUNT];
+    const uint8_t** y_data = new const uint8_t*[DATA_CONFIG_COUNT];
+    
+    bool success = mf->allocatePointerOnFlashXY(
+    "benchmark_data",
+    X_REGION_BYTE_OFFSET,
+    x_data,
+    Y_REGION_BYTE_OFFSET,
+    y_data,
+    DATA_CONFIG_COUNT,
+    X_OFFSETS,
+    Y_OFFSETS,
+    OFFSET_TYPE::FLOAT32);
+    
     float mse = 0;
-    for(int i =0; i < (int)(MODEL_COUNT / 4); i++)
+    
+    uint32_t max_output_size = 0;
+    for (int i = 0; i < DATA_CONFIG_COUNT; i++) {
+        if (Y_SIZES[i] > max_output_size) max_output_size = Y_SIZES[i];
+    }
+    float* output_window = new float[max_output_size];
+    const uint8_t** models_on_flash = new const uint8_t*[BENCHMARK_MODEL_COUNT];
+    
+    bool success = mf->allocatePointerOnFlash("benchmark_models", models_on_flash, 
+        BENCHMARK_MODEL_COUNT, BENCHMARK_MODEL_OFFSETS, OFFSET_TYPE::INT8);
+        if (!success) {
+            ESP_LOGE("MAIN", "Could not initialize mmaped pointers");
+            return;
+        }
+        
+    MasterHandle* master_handle = new MasterHandle(BENCHMARK_MODEL_COUNT,
+        models_on_flash,
+        BENCHMARK_INPUT_SIZES,
+        BENCHMARK_OUTPUT_SIZES, 
+        BENCHMARK_MODEL_SIZES);
+
+    for(int i =0; i < BENCHMARK_CONFIG_COUNT; i++)
     {
+        const int input_size        = (int)X_SIZES[i];
+        const int output_size       = (int)Y_SIZES[i];
+        const int intermediate_size = (int)INTERMEDIATE_SIZE[i];
+        const int first_out_len     = (int)OUT_LENS[i];
+        const int out_len           = output_size / CONFIG_OUTPUT_CHANNELS;
+
         final_report_size = strlen(final_report);
         snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Window %ld\nQuant Type: Float32\n", WINDOW_LENS[i]);
-        
-        ESP_LOGI("MAIN", "=============WINDOW-(%d)===========", i);
-        ESP_LOGI("MAIN", "Infenencing Win (%d) Float32", i);
+    
+        ESP_LOGI("MAIN", "Infenencing Config (%d) Float32", i);
         master_handle->init_models((i*4), (i*4) + 1, final_report, final_report_size);
         // TODO: put a condition so that we only run inference when the input window is full 
-        //master_handle->update_input_window();
-        master_handle->dual_inference(&(X_DATA[X_OFFSETS[i]]), WINDOW_LENS[i], output_window, (int)(WINDOW_LENS[i] /2), &final_report[0], REPORT_MAX);
-        //master_handle->push_output_window();
-        // Now it only works when the actual output window is filled, which is after the first inference runs. We can change this later to push partial windows if we want.
-        //master_handle->reset_for_next_window();
-        mse = master_handle->print_output(output_window, (int)(WINDOW_LENS[i] /2), &(Y_DATA[Y_OFFSETS[i]]));
+        master_handle->dual_inference(&X_DATA[X_OFFSETS[i]], input_size,
+                                      output_window, output_size,
+                                      intermediate_size, first_out_len,
+                                      &final_report[0], REPORT_MAX);
+        
+        mse = master_handle->print_output(output_window, output_size, &(Y_DATA[Y_OFFSETS[i]]));
+        
         master_handle->clear_models();
         
         final_report_size = strlen(final_report);
@@ -47,22 +89,19 @@ void run_app()
         snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Window %ld\nQuant Type: Int8\n", WINDOW_LENS[i]);
         
         // For INT8
-        ESP_LOGI("MAIN", "Infenencing Win (%d) Int8", i);
+        ESP_LOGI("MAIN", "Infenencing Config (%d) Int8", i);
         master_handle->init_models((i*4) + 2, (i*4) + 3, final_report, final_report_size);
-        // TODO: put a condition so that we only run inference when the input window is full 
-        //master_handle->update_input_window();
-        master_handle->dual_inference(&(X_DATA[X_OFFSETS[i]]), WINDOW_LENS[i], output_window, (int)(WINDOW_LENS[i] /2), &final_report[0], REPORT_MAX);
-        //master_handle->push_output_window();
-        // Now it only works when the actual output window is filled, which is after the first inference runs. We can change this later to push partial windows if we want.
-        //master_handle->reset_for_next_window();
-        mse = master_handle->print_output(output_window, (int)(WINDOW_LENS[i] /2), &(Y_DATA[Y_OFFSETS[i]]));
+
+        master_handle->dual_inference(&X_DATA[X_OFFSETS[i]], input_size,
+                                      output_window, output_size,
+                                      intermediate_size, first_out_len,
+                                      &final_report[0], REPORT_MAX);
+
+        mse = master_handle->print_output(output_window, out_len, &Y_DATA[Y_OFFSETS[i]]);
         master_handle->clear_models();
 
         final_report_size = strlen(final_report);
         snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: %0.4f\n", mse);
-
-        final_report_size = strlen(final_report);
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "=================================\n");
         
         vTaskDelay(10 / portTICK_PERIOD_MS); // Adjust delay as needed for timing
     }
@@ -155,7 +194,7 @@ void run_testing_benchmark()
 
     const uint8_t** data = new const uint8_t*[TENSOR_COUNT];
     // need to convert OFFSET from float count to actual byte size
-    bool success = mf->allocatePointerOnFlash("benchmark_data", data, TENSOR_COUNT, OFFSETS, SIZES, OFFSET_TYPE::FLOAT32);
+    bool success = mf->allocatePointerOnFlash("benchmark_data", data, TENSOR_COUNT, OFFSETS, OFFSET_TYPE::FLOAT32);
     
     float mse = 0;
 
@@ -357,6 +396,8 @@ extern "C" void app_main(void) {
                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
     
     
-    run_testing_benchmark();
-    run_optimized();
+    //run_testing_benchmark();
+    //run_optimized();
+
+    run_app();
 }

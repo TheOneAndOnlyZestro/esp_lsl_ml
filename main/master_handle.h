@@ -10,9 +10,8 @@
 
 #include "MicroInterface/Model.h"
 
-#include "models_manifest.h"
-#include "model_flash.h"
-
+//#include "models_manifest.h"
+#include "binary_manifests/model_all/models_manifest_0.h"
 #include "model_flash.h"
 #include "lsl_handle.h"
 
@@ -27,25 +26,32 @@ class MasterHandle {
       
         int m_input_window_size;
         int m_output_window_size;
-
-        const char* models_partition;
         
         uint32_t* input_sizes;
         uint32_t* output_sizes;
 
+        const uint8_t** flash_models_ptrs;
+        const uint32_t* model_input_sizes;
+        const uint32_t* model_output_sizes;
+        const uint32_t* model_sizes;
+        int models_count;
 
-        const uint8_t** models_ptrs;
-    
+        const int feature_ch = 56;
     public:
-        MasterHandle(const char* models_partition);
-        ~MasterHandle(){};
+        MasterHandle(const int models_count,
+            const uint8_t** flash_models_ptrs,
+            const uint32_t* model_input_sizes,
+            const uint32_t* model_output_sizes,
+            const uint32_t* model_sizes
+        );
 
-        void init_model_refs();
-        void init_model(int model_index, int internal_index, char* report_buffer, int size);
+        ~MasterHandle(){};
+        void init_model(int model_index, int internal_index,
+        char* report_buffer, int size);
         void init_models(int model_1_index, int model_2_index, char* report_buffer, int size);
         void update_input_window();
 
-        float print_output(const float* output_window, int window_len, const float* correct_window);
+        float print_output(const float* output_window, int output_size, const float* correct_window);
 
         void push_output_window();
         void reset_for_next_window();
@@ -56,6 +62,8 @@ class MasterHandle {
         void clear_models();
         void run_inference();
 
-        void dual_inference(const float* input_ptr, int input_window_size, float* output_ptr, int output_window_size,
-        char* report_buffer, int size);
+        void dual_inference(const float* input_ptr, int input_size,
+                                  float* output_ptr, int output_size,
+                                  int intermediate_size, int first_out_len,
+                                  char* report_buffer, int size);
 };

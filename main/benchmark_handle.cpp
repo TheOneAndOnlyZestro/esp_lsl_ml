@@ -11,7 +11,7 @@ void BenchmarkHandle::init_model_refs()
     m_model_flash = new ModelFlash();
 
     this->models_ptrs = new const uint8_t*[BENCHMARK_MODEL_COUNT];
-    bool success = m_model_flash->allocatePointerOnFlash(this->models_partition, this->models_ptrs, BENCHMARK_MODEL_COUNT, BENCHMARK_MODEL_OFFSETS, BENCHMARK_MODEL_SIZES);
+    bool success = m_model_flash->allocatePointerOnFlash(this->models_partition, this->models_ptrs, BENCHMARK_MODEL_COUNT, BENCHMARK_MODEL_OFFSETS);
     if (!success) {
             ESP_LOGE("MASTERHandle", "Could not initialize mmaped pointers");
             return;

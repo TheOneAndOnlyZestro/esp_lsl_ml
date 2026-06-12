@@ -21,7 +21,16 @@ public:
     ~ModelFlash() {}
 
     bool allocatePointerOnFlash(const char* partition, const uint8_t** out_ptrs, int count,
-         const uint32_t* model_offsets, const uint32_t* model_sizes, OFFSET_TYPE offset_type = OFFSET_TYPE::INT8);
+         const uint32_t* model_offsets, OFFSET_TYPE offset_type = OFFSET_TYPE::INT8);
+    
+    bool allocatePointerOnFlashXY(const char* partition,
+        const uint32_t base_x, const uint8_t** out_ptrs_x, 
+        const uint32_t base_y, const uint8_t** out_ptrs_y,
+        int count,
+        const uint32_t* x_offsets,
+        const uint32_t* y_offsets,
+        OFFSET_TYPE offset_type = OFFSET_TYPE::FLOAT32);
+
     uint8_t* allocatePointerOnPSRAM(const int size);
 };
 
