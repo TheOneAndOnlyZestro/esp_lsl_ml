@@ -8,7 +8,7 @@
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/system_setup.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-
+#include "tensorflow/lite/micro/micro_profiler.h"
 #include "model_flash.h"
 
 class Model {
@@ -33,6 +33,8 @@ private:
     ModelFlash* mflash;
 
     bool inPSRAM;
+
+    tflite::MicroProfiler profiler;
 public:
     // Constructor — override default 80 KB arena if a model needs more
     Model(ModelFlash* model_flash, const unsigned char* model_data, int arena_size, 
@@ -42,8 +44,23 @@ public:
     ~Model();
 
     bool predict(const float* input_data, const int* input_lengths, float* results, const int* output_lengths);
+    bool predict(const int8_t* input_data, const int* input_lengths, int8_t* results, const int* output_lengths);
+    
+    bool predict(const float* input_data, const int* input_lengths, int8_t* results, const int* output_lengths);
 
+    float   getInputScale(int i)      const { return input[i]->params.scale; }
+    int32_t getInputZeroPoint(int i)  const { return input[i]->params.zero_point; }
+    float   getOutputScale(int i)     const { return output[i]->params.scale; }
+    int32_t getOutputZeroPoint(int i) const { return output[i]->params.zero_point; }
+    int     getInputCount()           const { return (int)input_size; }
+    int     getOutputCount()          const { return (int)output_size; }
+    TfLiteType getInputType(int i)    const {return input[i]->type; }
+    
+    void getTotalProfileTimePerOp() ;
+    void callProfilerLog() const;
     bool isInitialized() const { return initialized; }
+
+    void ClearProfiler();
     size_t getArenaUsedBytes() const;
 };
 

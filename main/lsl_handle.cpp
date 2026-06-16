@@ -1,11 +1,13 @@
 #include "lsl_handle.h"
 
-LSLHandle::LSLHandle() :
+LSLHandle::LSLHandle(int window_size) :
  m_inlet(nullptr), m_inlet_info(nullptr), m_outlet(nullptr), m_outlet_info(nullptr) {
     init_wifi();
-
-    //init_outlet();
     init_inlet();
+
+    this->input_window = new float[window_size * CONFIG_INPUT_WINDOW_SIZE]{0.f};
+    this->capacity = window_size * CONFIG_INPUT_WINDOW_SIZE;
+    this->size = 0;
  }
 
  LSLHandle::~LSLHandle() {
@@ -93,18 +95,17 @@ void LSLHandle::init_outlet() {
     }
 
 }
-lsl_esp32_err_t LSLHandle::pull_samples(float (&buffer)[CONFIG_INPUT_CHANNELS]) {
+lsl_esp32_err_t LSLHandle::pull_samples(float* buffer) {
     if (!m_inlet) {
         return LSL_ESP32_ERR_INVALID_ARG;
     }
 
     lsl_esp32_err_t err = lsl_esp32_inlet_pull_sample_f(
-        m_inlet, buffer, sizeof(buffer), &m_inlet_last_timestamp, 0.0);
-
+        m_inlet, buffer, sizeof(float) * CONFIG_INPUT_CHANNELS, &m_inlet_last_timestamp, 0.0);
     return err;
 }
 
-lsl_esp32_err_t LSLHandle::push_samples(const float (&buffer)[CONFIG_OUTPUT_CHANNELS]) {
+lsl_esp32_err_t LSLHandle::push_samples(float* buffer) {
     if (!m_outlet) {
         return LSL_ESP32_ERR_INVALID_ARG;
     }
@@ -112,11 +113,33 @@ lsl_esp32_err_t LSLHandle::push_samples(const float (&buffer)[CONFIG_OUTPUT_CHAN
     init_timestep(); 
     lsl_esp32_err_t err = lsl_esp32_push_sample_f(
         m_outlet, buffer, m_outlet_last_timestamp);
-
+    
+    
     return err;
 }
 
 void LSLHandle::init_timestep() {
     // Implementation for initializing timestep
     m_outlet_last_timestamp = lsl_esp32_local_clock();
+}
+
+bool LSLHandle::add_to_window()
+{
+    // ensure room for a full 8-channel sample
+    if (size + CONFIG_INPUT_CHANNELS > capacity) {
+        size = 0;
+        return false;         
+    }
+
+    lsl_esp32_err_t status = pull_samples(&input_window[size]);
+    if (status != LSL_ESP32_ERR_TIMEOUT) {
+        //printf("RECEIVED: %0.2f\n", input_window[size]);  // the cell just written
+        size += CONFIG_INPUT_CHANNELS;
+    }
+    return true;
+}
+
+float* LSLHandle::expose_window()
+{
+    return input_window;
 }

@@ -5,11 +5,77 @@
 #include "OptimizedNativeLSTM.h"
 #include "weights.h"
 
-
-#include "binary_manifests/model_all/manifest_0.h"
-#include "binary_manifests/model_all/models_manifest_0.h"
+#include "lsl_handle.h"
+#include "binary_manifests/tri_models/manifest_0.h"
+#include "binary_manifests/tri_models/models_manifest_0.h"
 #define REPORT_MAX 20000
 
+void run_one_app()
+{
+    char final_report[REPORT_MAX] = {0};
+    int final_report_size = strlen(final_report);
+    ModelFlash* mf = new ModelFlash();
+
+    const uint8_t** models_on_flash = new const uint8_t*[MODEL_COUNT];
+    
+    bool success = mf->allocatePointerOnFlash("benchmark_models", models_on_flash, 
+    MODEL_COUNT, MODEL_OFFSETS, OFFSET_TYPE::INT8);
+
+    if (!success) {
+        ESP_LOGE("MAIN", "Could not initialize mmaped pointers");
+        return;
+    }
+
+    MasterHandle* master_handle = new MasterHandle(MODEL_COUNT,
+        models_on_flash,
+        INPUT_SIZES,
+        OUTPUT_SIZES, 
+        MODEL_SIZES);
+    
+    int model_index = 0;
+    //Initialize model
+    const int input_size        = (int)MAIN_X_SIZES[model_index];
+    const int output_size       = (int)MAIN_Y_SIZES[model_index];
+    const int intermediate_size = (int)MAIN_INTERMEDIATE_SIZE[model_index];
+    const int first_out_len     = (int)MAIN_OUT_LENS[model_index];
+    const int out_len           = output_size / CONFIG_OUTPUT_CHANNELS;
+    
+    LSLHandle* main_handle = new LSLHandle((int)MAIN_WINDOW_LENS[0]);
+    float* output_window = new float[output_size];
+    float* input_window = main_handle->expose_window();
+
+    final_report_size = strlen(final_report);
+    snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Window %ld\nQuant Type: Float32\n", MAIN_WINDOW_LENS[model_index]);
+
+    ESP_LOGI("MAIN", "Infenencing Config (%d) Float32", model_index);
+    master_handle->init_models(model_index*6 + 3, 
+    model_index*6 + 4, 
+    model_index*6 + 2,
+    true, final_report, final_report_size);
+    //float first, float second, int first,int second
+
+    while (true)
+    {
+        //allocate data from flash onto sram
+        while(main_handle->add_to_window()){}
+        
+
+        uint64_t startTime_first = esp_timer_get_time();
+        master_handle->dual_inference(&input_window[0], input_size,
+                                        &output_window[0], output_size,
+                                        intermediate_size, first_out_len,
+                                        nullptr, REPORT_MAX);
+
+        uint64_t duration_first = esp_timer_get_time() - startTime_first;
+
+        ESP_LOGW("INFERENCE", "infernce: %lld \xCE\xBCs\n", duration_first);
+
+        master_handle->display_output(output_window, output_size);    
+
+    }
+
+
+}
 void run_app()
 {
     
@@ -21,27 +87,22 @@ void run_app()
     
     char final_report[REPORT_MAX] = {0};
     int final_report_size = strlen(final_report);
-    
     ModelFlash* mf = new ModelFlash();
     const uint8_t** x_data = new const uint8_t*[DATA_CONFIG_COUNT];
     const uint8_t** y_data = new const uint8_t*[DATA_CONFIG_COUNT];
     
 
-    // for(int j =0; j < 400; j++)
-    // {
-    //     // Calculate MSE
-    //     printf("X_DATA CHECK (%d)[%0.4f]\n", j, x_data[0][]);
-    // }
     mf->allocatePointerOnFlashXY(
-    "benchmark_data",
-    X_REGION_BYTE_OFFSET,
-    x_data,
-    Y_REGION_BYTE_OFFSET,
-    y_data,
-    DATA_CONFIG_COUNT,
-    MAIN_X_OFFSETS,
-    MAIN_Y_OFFSETS,
-    OFFSET_TYPE::FLOAT32);
+        "benchmark_data",
+        X_REGION_BYTE_OFFSET,
+        x_data,
+        Y_REGION_BYTE_OFFSET,
+        y_data,
+        DATA_CONFIG_COUNT,
+        MAIN_X_OFFSETS,
+        MAIN_Y_OFFSETS,
+        OFFSET_TYPE::FLOAT32
+    );
     
     float mse = 0;
     
@@ -62,6 +123,7 @@ void run_app()
     
     bool success = mf->allocatePointerOnFlash("benchmark_models", models_on_flash, 
     MODEL_COUNT, MODEL_OFFSETS, OFFSET_TYPE::INT8);
+
     if (!success) {
         ESP_LOGE("MAIN", "Could not initialize mmaped pointers");
         return;
@@ -87,9 +149,12 @@ void run_app()
         final_report_size = strlen(final_report);
         snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Window %ld\nQuant Type: Float32\n", MAIN_WINDOW_LENS[i]);
     
-        ESP_LOGI("MAIN", "Infenencing Config (%d) Float32", i);
-        master_handle->init_models((i*4), (i*4) + 1, final_report, final_report_size);
-
+        ESP_LOGI("MAIN", "Infenencing Config (%d) INT First 2 models and Float32 last", i);
+        master_handle->init_models(
+        i*6 + 3,
+        i*6 + 4,
+        i*6 + 2,
+        true, final_report, final_report_size);
 
         //allocate data from flash onto sram
         master_handle->dual_inference(&input_window[0], input_size,
@@ -103,31 +168,10 @@ void run_app()
         
         final_report_size = strlen(final_report);
 
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: %0.4f\n", mse);
+        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: %0.4f\n\n", mse);
 
         vTaskDelay(10 / portTICK_PERIOD_MS); // Adjust delay as needed for timing
         
-        
-        final_report_size = strlen(final_report);
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Window %ld\nQuant Type: Int8\n", MAIN_WINDOW_LENS[i]);
-        
-        // For INT8
-        ESP_LOGI("MAIN", "Infenencing Config (%d) Int8", i);
-        master_handle->init_models((i*4) + 2, (i*4) + 3, final_report, final_report_size);
-
-        master_handle->dual_inference(&input_window[0], input_size,
-                                      &output_window[0], output_size,
-                                      intermediate_size, first_out_len,
-                                      &final_report[0], REPORT_MAX);
-        
-        mse = master_handle->print_output(output_window, output_size, &correct_window[0]);
-
-        master_handle->clear_models();
-
-        final_report_size = strlen(final_report);
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: %0.4f\n", mse);
-        
-        vTaskDelay(10 / portTICK_PERIOD_MS); // Adjust delay as needed for timing
     }
     
     ESP_LOGI("FINAL REPORT", "%s", final_report);
@@ -413,6 +457,18 @@ void run_optimized()
     // }
 
 }
+
+void test_lsl()
+{
+    LSLHandle* main_handle = new LSLHandle((int)MAIN_WINDOW_LENS[0]);
+
+    while (true)
+    {
+        main_handle->add_to_window();
+        main_handle->print_current_window();
+    }
+    
+}
 extern "C" void app_main(void) {
     //Disable watchdog
     printf("ESP32_READY\n");
@@ -424,4 +480,6 @@ extern "C" void app_main(void) {
     //run_optimized();
 
     run_app();
+
+    //run_one_app();
 }

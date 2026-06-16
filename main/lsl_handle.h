@@ -17,6 +17,10 @@ class LSLHandle {
         lsl_esp32_inlet_t m_inlet;
         lsl_esp32_stream_info_t m_inlet_info;
         
+
+        float* input_window;
+        int capacity;
+        int size;
         double m_inlet_last_timestamp;
         double m_outlet_last_timestamp;
 
@@ -25,7 +29,7 @@ class LSLHandle {
 
     public:
 
-        LSLHandle();
+        LSLHandle(int window_size);
         ~LSLHandle();
 
         void init_outlet();
@@ -37,7 +41,10 @@ class LSLHandle {
         const char* get_outlet_info() const;
         void init_timestep();
 
-        lsl_esp32_err_t pull_samples(float (&buffer)[CONFIG_INPUT_CHANNELS]);
-        lsl_esp32_err_t push_samples(const float (&buffer)[CONFIG_OUTPUT_CHANNELS]);
+        lsl_esp32_err_t pull_samples(float* buffer);
+        lsl_esp32_err_t push_samples(float* buffer);
 
+        bool add_to_window();
+        void print_current_window();
+        float* expose_window();
 };

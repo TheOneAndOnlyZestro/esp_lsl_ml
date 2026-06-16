@@ -1,7 +1,7 @@
 idf_component_register(
 SRCS 
     "master_handle.cpp" "wifi_helper.c"
-    "main.cpp" "Microinterface/Model.cpp" "model_flash.cpp"
+    "main.cpp" "Microinterface/Model.cpp" "Microinterface/SequentialModel.cpp" "model_flash.cpp"
     "benchmark_handle.cpp"
     "lsl_handle.cpp"
     "OptimizedNativeLSTM.cpp"
@@ -25,3 +25,6 @@ REQUIRES driver esp_timer spi_flash
 
 #esptool_py_flash_to_partition(flash "benchmark_models" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/model_all/models_0.bin")
 #esptool_py_flash_to_partition(flash "benchmark_data" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/model_all/data.bin")
+
+#esptool_py_flash_to_partition(flash "benchmark_models" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/tri_models/models_0.bin")
+#esptool_py_flash_to_partition(flash "benchmark_data" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/tri_models/data.bin")

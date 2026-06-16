@@ -145,28 +145,6 @@ void OptimizedNativeLSTM::run_inference(
     // x_weights = (x_features, 4 * h_features)
     // x = (x_features)
 
-    // get array of per channel mult and shifts
-    
-
-    //printf("BEGIN mult calculation\n");
-    
-    //printf("END mult calculation\n");
-    // for(int i =0; i < this->m_h_features * 4; i++)
-    // {
-    //     printf("mult: %ld, shift: %ld\n", out_mults[i], out_shifts[i]);
-    // }
-
-    // for(int i=0; i < this->m_x_features; i++)
-    // {
-    //     printf("x(%d)[%d]\n", i, x[i]);
-        
-    // }
-
-    // for(int i=0; i < this->m_x_features; i++)
-    // {
-    //     printf("w(%d)[%d]\n", i, m_x_weights[i]);
-    // }
-    
     //int8_t* x_gates = new int8_t[this->m_h_features * 4];
     // uint64_t startTime_first = esp_timer_get_time();
     esp_nn_fully_connected_per_ch_s8(

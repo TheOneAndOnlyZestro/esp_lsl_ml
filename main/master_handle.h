@@ -14,16 +14,10 @@
 
 class MasterHandle {
     private:
-        LSLHandle* m_lsl_handle;
-
         Model** m_model;
-        uint8_t* m_psram_model_ptr[2];
+        uint8_t* m_psram_model_ptr[3];
         ModelFlash* m_model_flash;
-        // Window buffer
-      
-        int m_input_window_size;
-        int m_output_window_size;
-        
+              
         uint32_t* input_sizes;
         uint32_t* output_sizes;
 
@@ -32,8 +26,11 @@ class MasterHandle {
         const uint32_t* model_input_sizes;
         const uint32_t* model_output_sizes;
         const uint32_t* model_sizes;
-
+        
+        int8_t elu_lut[256];
         const int feature_ch = 56;
+
+        bool usePSRAM = true;
     public:
         MasterHandle(const int models_count,
             const uint8_t** flash_models_ptrs,
@@ -45,22 +42,27 @@ class MasterHandle {
         ~MasterHandle(){};
         void init_model(int model_index, int internal_index,
         char* report_buffer, int size);
-        void init_models(int model_1_index, int model_2_index, char* report_buffer, int size);
-        void update_input_window();
+        void init_models(int model_1_index, int model_2_index,int model_3_index,
+             bool usePSRAM, char* report_buffer, int size);
 
         float print_output(const float* output_window, int output_size, const float* correct_window);
-
-        void push_output_window();
-        void reset_for_next_window();
-
-        inline bool is_input_window_filled() const { return m_input_window_size >= CONFIG_INPUT_WINDOW_SIZE; }
-        inline bool is_output_window_filled() const { return m_output_window_size >= CONFIG_OUTPUT_WINDOW_SIZE; }
         
+        void display_output(const float* output_window, int output_sizes);
         void clear_models();
-        void run_inference();
 
         void dual_inference(const float* input_ptr, int input_size,
                                   float* output_ptr, int output_size,
                                   int intermediate_size, int first_out_len,
                                   char* report_buffer, int size);
+
+        void build_elu_lut(float in_scale, int32_t in_zp,
+                        float out_scale, int32_t out_zp, float alpha);
+        // between blocks, over the whole tensor:
+        void apply_elu_lut(int8_t *t, int n);
+
+        void apply_elu_lut_int_float(
+        int8_t* in, int n, float in_scale, int32_t in_zp,
+        float alpha, float* out);
+
+
 };
