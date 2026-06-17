@@ -369,7 +369,11 @@ void MasterHandle::dual_inference(const float* input_ptr, int input_size,
         } else {
             ESP_LOGE("MASTERHandle", "Second model inference failed @ time_step: %d", t);
         }
-
+        
+        if(t==1)
+        {
+            m_model[2]->getTotalProfileTimePerOp();
+        }
         m_model[2]->ClearProfiler();
     }
     

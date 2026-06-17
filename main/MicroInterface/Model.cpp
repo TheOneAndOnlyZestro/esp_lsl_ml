@@ -143,8 +143,8 @@ void Model::callProfilerLog() const
 
 void Model::getTotalProfileTimePerOp()
 {
-    //profiler.LogTicksPerTagCsv();
-    profiler.Log();
+    profiler.LogTicksPerTagCsv();
+    //profiler.Log();
 }
 void Model::ClearProfiler()
 {

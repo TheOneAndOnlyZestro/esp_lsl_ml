@@ -50,7 +50,7 @@ void run_one_app()
     ESP_LOGI("MAIN", "Infenencing Config (%d) Float32", model_index);
     master_handle->init_models(model_index*6 + 3, 
     model_index*6 + 4, 
-    model_index*6 + 2,
+    model_index*6 + 5,
     true, final_report, final_report_size);
     //float first, float second, int first,int second
 
@@ -153,7 +153,7 @@ void run_app()
         master_handle->init_models(
         i*6 + 3,
         i*6 + 4,
-        i*6 + 2,
+        i*6 + 5,
         true, final_report, final_report_size);
 
         //allocate data from flash onto sram
