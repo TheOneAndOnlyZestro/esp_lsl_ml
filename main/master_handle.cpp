@@ -73,7 +73,7 @@ float MasterHandle::print_output(const float* output_window, int output_size, co
     for(int j =0; j < output_size; j++)
     {
         // Calculate MSE
-        if(j % (int)(output_size / 5) == 0)
+        if(j % (int)(output_size / 2) == 0)
         printf("(%d)[%0.4f],  (%d)[%0.4f]\n", j, output_window[j], j, correct_window[j]);
         // Calculate MSE
         mse += (output_window[j] - correct_window[j]) * 
@@ -159,6 +159,7 @@ void MasterHandle::apply_elu_lut_int_float(
 }
 void MasterHandle::dual_inference(const float* input_ptr, int input_size,
                                   float* output_ptr, int output_size,
+                                  float* second_input_ptr, const int* second_input_lengths,
                                   int intermediate_size, int first_out_len,
                                   char* report_buffer, int size)
 {
@@ -182,8 +183,8 @@ void MasterHandle::dual_inference(const float* input_ptr, int input_size,
     assert(out_len <= first_out_len);         // T_eff = (T/step)*step <= T
     assert(first_out_len - out_len < step);   // only a ragged tail may be skipped
  
-    ESP_LOGI("MASTERHandle", "dual_inference: in=%d, out=%d, inter=%d (step=%d, out_len=%d, T=%d)",
-             input_size, output_size, intermediate_size, step, out_len, first_out_len);
+    // ESP_LOGI("MASTERHandle", "dual_inference: in=%d, out=%d, inter=%d (step=%d, out_len=%d, T=%d)",
+    //          input_size, output_size, intermediate_size, step, out_len, first_out_len);
     
     uint64_t startTime_first_a = esp_timer_get_time();
  
@@ -206,8 +207,8 @@ void MasterHandle::dual_inference(const float* input_ptr, int input_size,
 
     if (success) {
         float durationInMs = duration_first_a / 1000;
-        ESP_LOGI("MASTERHandle", "Inference For First A Model took: %lld micro seconds, %0.4f ms",
-            duration_first_a, durationInMs);
+        // ESP_LOGI("MASTERHandle", "Inference For First A Model took: %lld micro seconds, %0.4f ms",
+        //     duration_first_a, durationInMs);
             
         
         if(report_buffer != nullptr)
@@ -220,7 +221,7 @@ void MasterHandle::dual_inference(const float* input_ptr, int input_size,
     } else {
         ESP_LOGE("MASTERHandle", "First model inference failed");
     }
-    m_model[0]->getTotalProfileTimePerOp();
+    //m_model[0]->getTotalProfileTimePerOp();
     m_model[0]->ClearProfiler();
 
     float first_a_scale = m_model[0]->getOutputScale(0);
@@ -239,8 +240,8 @@ void MasterHandle::dual_inference(const float* input_ptr, int input_size,
     {
         report_size = strlen(report_buffer);
         float durationInMs = duration_ELU_A / 1000;
-        ESP_LOGI("MASTERHandle", "Inference For first ELU took: %lld micro seconds, %0.4f ms",
-            duration_ELU_A, durationInMs);
+        // ESP_LOGI("MASTERHandle", "Inference For first ELU took: %lld micro seconds, %0.4f ms",
+        //     duration_ELU_A, durationInMs);
         snprintf(report_buffer + report_size, size - report_size,
                 "0_Model InfELUa: %lld \xCE\xBCs, %0.2f ms\n", duration_ELU_A, durationInMs);
     }
@@ -258,8 +259,8 @@ void MasterHandle::dual_inference(const float* input_ptr, int input_size,
     
     if (success) {
         float durationInMs = duration_first_b / 1000;
-        ESP_LOGI("MASTERHandle", "Inference For First B Model took: %lld micro seconds, %0.4f ms",
-            duration_first_b, durationInMs);
+        // ESP_LOGI("MASTERHandle", "Inference For First B Model took: %lld micro seconds, %0.4f ms",
+        //     duration_first_b, durationInMs);
             
         
         if(report_buffer != nullptr)
@@ -273,7 +274,7 @@ void MasterHandle::dual_inference(const float* input_ptr, int input_size,
         ESP_LOGE("MASTERHandle", "First model inference failed");
     }
 
-    m_model[1]->getTotalProfileTimePerOp();
+    //m_model[1]->getTotalProfileTimePerOp();
     m_model[1]->ClearProfiler();
     
     first_b_scale = m_model[1]->getOutputScale(0);
@@ -293,8 +294,8 @@ void MasterHandle::dual_inference(const float* input_ptr, int input_size,
         report_size = strlen(report_buffer);
         float durationInMs = duration_ELU_B / 1000;
 
-        ESP_LOGI("MASTERHandle", "Inference For second ELU took: %lld micro seconds, %0.4f ms",
-            duration_ELU_B, durationInMs);
+        // ESP_LOGI("MASTERHandle", "Inference For second ELU took: %lld micro seconds, %0.4f ms",
+        //     duration_ELU_B, durationInMs);
 
         snprintf(report_buffer + report_size, size - report_size,
                 "0_Model InfELUb: %lld \xCE\xBCs, %0.2f ms\n", duration_ELU_B, durationInMs);
@@ -302,15 +303,7 @@ void MasterHandle::dual_inference(const float* input_ptr, int input_size,
     }
 
     // SECOND MODEL =====================================================
-    uint64_t startTime_second = esp_timer_get_time();
- 
-    // Inputs:  [ x (56*step) | h (2*56) | c (2*56) ]
-    float* second_input_ptr = new float[intermediate_size + 2 * state_size]{0};
-    const int* second_input_lengths = new const int[3]{
-        intermediate_size,
-        state_size,
-        state_size
-    };
+    uint64_t startTime_second = esp_timer_get_time();   
  
     // Outputs: [ y (out_ch*step) | h (2*56) | c (2*56) ]
     const int y_chunk = CONFIG_OUTPUT_CHANNELS * step;
@@ -323,6 +316,7 @@ void MasterHandle::dual_inference(const float* input_ptr, int input_size,
 
     bool reported_single_step = false;
  
+    printf("Check Second Model Health: %d", m_model[2]->getInputType(0));
     for (int t = 0; t < out_len; t += step) {
         uint64_t intermediateTime_second = esp_timer_get_time();
  
@@ -372,7 +366,7 @@ void MasterHandle::dual_inference(const float* input_ptr, int input_size,
         
         if(t==1)
         {
-            m_model[2]->getTotalProfileTimePerOp();
+            //m_model[2]->getTotalProfileTimePerOp();
         }
         m_model[2]->ClearProfiler();
     }
@@ -412,8 +406,6 @@ void MasterHandle::dual_inference(const float* input_ptr, int input_size,
     delete[] output_lengths_b;
     delete[] first_output_ptr_b_after_elu;
 
-    delete[] second_input_ptr;
-    delete[] second_input_lengths;
     delete[] intermediate_output_ptr;
     delete[] intermediate_output_lengths;
  

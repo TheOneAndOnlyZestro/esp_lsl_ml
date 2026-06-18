@@ -6,81 +6,82 @@
 #include "weights.h"
 
 #include "lsl_handle.h"
-#include "binary_manifests/tri_models/manifest_0.h"
-#include "binary_manifests/tri_models/models_manifest_0.h"
+#include "binary_manifests/trial_models/manifest_0.h"
+#include "binary_manifests/trial_models/models_manifest_0.h"
 #define REPORT_MAX 20000
 
-void run_one_app()
-{
-    char final_report[REPORT_MAX] = {0};
-    int final_report_size = strlen(final_report);
-    ModelFlash* mf = new ModelFlash();
+#define LSTM_FEATURES (CONFIG_INPUT_CHANNELS + 48)
+// void run_one_app()
+// {
+//     char final_report[REPORT_MAX] = {0};
+//     int final_report_size = strlen(final_report);
+//     ModelFlash* mf = new ModelFlash();
 
-    const uint8_t** models_on_flash = new const uint8_t*[MODEL_COUNT];
+//     const uint8_t** models_on_flash = new const uint8_t*[MODEL_COUNT];
     
-    bool success = mf->allocatePointerOnFlash("benchmark_models", models_on_flash, 
-    MODEL_COUNT, MODEL_OFFSETS, OFFSET_TYPE::INT8);
+//     bool success = mf->allocatePointerOnFlash("benchmark_models", models_on_flash, 
+//     MODEL_COUNT, MODEL_OFFSETS, OFFSET_TYPE::INT8);
 
-    if (!success) {
-        ESP_LOGE("MAIN", "Could not initialize mmaped pointers");
-        return;
-    }
+//     if (!success) {
+//         ESP_LOGE("MAIN", "Could not initialize mmaped pointers");
+//         return;
+//     }
 
-    MasterHandle* master_handle = new MasterHandle(MODEL_COUNT,
-        models_on_flash,
-        INPUT_SIZES,
-        OUTPUT_SIZES, 
-        MODEL_SIZES);
+//     MasterHandle* master_handle = new MasterHandle(MODEL_COUNT,
+//         models_on_flash,
+//         INPUT_SIZES,
+//         OUTPUT_SIZES, 
+//         MODEL_SIZES);
     
-    int model_index = 0;
-    //Initialize model
-    const int input_size        = (int)MAIN_X_SIZES[model_index];
-    const int output_size       = (int)MAIN_Y_SIZES[model_index];
-    const int intermediate_size = (int)MAIN_INTERMEDIATE_SIZE[model_index];
-    const int first_out_len     = (int)MAIN_OUT_LENS[model_index];
-    const int out_len           = output_size / CONFIG_OUTPUT_CHANNELS;
+//     int model_index = 0;
+//     //Initialize model
+//     const int input_size        = (int)MAIN_X_SIZES[model_index];
+//     const int output_size       = (int)MAIN_Y_SIZES[model_index];
+//     const int intermediate_size = (int)MAIN_INTERMEDIATE_SIZE[model_index];
+//     const int first_out_len     = (int)MAIN_OUT_LENS[model_index];
+//     const int out_len           = output_size / CONFIG_OUTPUT_CHANNELS;
     
-    LSLHandle* main_handle = new LSLHandle((int)MAIN_WINDOW_LENS[0]);
-    float* output_window = new float[output_size];
-    float* input_window = main_handle->expose_window();
+//     LSLHandle* main_handle = new LSLHandle((int)MAIN_WINDOW_LENS[0]);
+//     float* output_window = new float[output_size];
+//     float* input_window = main_handle->expose_window();
 
-    final_report_size = strlen(final_report);
-    snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Window %ld\nQuant Type: Float32\n", MAIN_WINDOW_LENS[model_index]);
+//     final_report_size = strlen(final_report);
+//     snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Window %ld\nQuant Type: Float32\n", MAIN_WINDOW_LENS[model_index]);
 
-    ESP_LOGI("MAIN", "Infenencing Config (%d) Float32", model_index);
-    master_handle->init_models(model_index*6 + 3, 
-    model_index*6 + 4, 
-    model_index*6 + 5,
-    true, final_report, final_report_size);
-    //float first, float second, int first,int second
+//     ESP_LOGI("MAIN", "Infenencing Config (%d) Float32", model_index);
+//     master_handle->init_models(model_index*6 + 3, 
+//     model_index*6 + 4, 
+//     model_index*6 + 5,
+//     true, final_report, final_report_size);
+//     //float first, float second, int first,int second
 
-    while (true)
-    {
-        //allocate data from flash onto sram
-        while(main_handle->add_to_window()){}
+//     while (true)
+//     {
+//         //allocate data from flash onto sram
+//         while(main_handle->add_to_window()){}
         
 
-        uint64_t startTime_first = esp_timer_get_time();
-        master_handle->dual_inference(&input_window[0], input_size,
-                                        &output_window[0], output_size,
-                                        intermediate_size, first_out_len,
-                                        nullptr, REPORT_MAX);
+//         uint64_t startTime_first = esp_timer_get_time();
+//         master_handle->dual_inference(&input_window[0], input_size,
+//                                         &output_window[0], output_size,
+//                                         intermediate_size, first_out_len,
+//                                         nullptr, REPORT_MAX);
 
-        uint64_t duration_first = esp_timer_get_time() - startTime_first;
+//         uint64_t duration_first = esp_timer_get_time() - startTime_first;
 
-        ESP_LOGW("INFERENCE", "infernce: %lld \xCE\xBCs\n", duration_first);
+//         ESP_LOGW("INFERENCE", "infernce: %lld \xCE\xBCs\n", duration_first);
 
-        master_handle->display_output(output_window, output_size);    
+//         master_handle->display_output(output_window, output_size);    
 
-    }
+//     }
 
 
-}
+// }
+
 void run_app()
 {
     
     // We need to now do a for loop for all models 
-    
     // Step 1: Pull the data from lsl into the windowed buffer
     // Step 2: Run inference on the windowed buffer which should put the appropriate output into the output buffer
     // Step 3: Push the output data buffer to the LSL outlet
@@ -88,7 +89,7 @@ void run_app()
     char final_report[REPORT_MAX] = {0};
     int final_report_size = strlen(final_report);
     ModelFlash* mf = new ModelFlash();
-    const uint8_t** x_data = new const uint8_t*[DATA_CONFIG_COUNT];
+    const uint8_t** x_data = new const uint8_t*[1];
     const uint8_t** y_data = new const uint8_t*[DATA_CONFIG_COUNT];
     
 
@@ -104,21 +105,19 @@ void run_app()
         OFFSET_TYPE::FLOAT32
     );
     
-    float mse = 0;
+    
     
     uint32_t max_output_size = 0;
     for (int i = 0; i < DATA_CONFIG_COUNT; i++) {
         if (MAIN_Y_SIZES[i] > max_output_size) max_output_size = MAIN_Y_SIZES[i];
     }
+    float* output_trial = new float[max_output_size]; //biggest output_trial = input_trial / downsample_rate
+    float* correct_trial = new float[max_output_size];
 
-    float* output_window = new float[max_output_size];
-    float* correct_window = new float[max_output_size];
-    uint32_t max_input_size = 0;
-    for (int i = 0; i < DATA_CONFIG_COUNT; i++) {
-        if (MAIN_X_SIZES[i] > max_input_size) max_input_size = MAIN_X_SIZES[i];
-    }
+    const uint32_t max_input_size = Y_REGION_BYTE_OFFSET / sizeof(float);
+    const uint32_t input_trial_len = max_input_size / 8;
 
-    float* input_window = new float[max_input_size];
+    float* input_trial = new float[max_input_size]; // max_input_size = samples / trial (about 9000 * 8 channels)
     const uint8_t** models_on_flash = new const uint8_t*[MODEL_COUNT];
     
     bool success = mf->allocatePointerOnFlash("benchmark_models", models_on_flash, 
@@ -134,42 +133,130 @@ void run_app()
         INPUT_SIZES,
         OUTPUT_SIZES, 
         MODEL_SIZES);
+    
+
+    float accumulated_mse = 0;
+    float max_mse = -1.0;
 
     for(int i =0; i < CONFIG_COUNT; i++)
-    {
-        const int input_size        = (int)MAIN_X_SIZES[i];
-        const int output_size       = (int)MAIN_Y_SIZES[i];
+    {   
+        uint64_t startTimeTrial = esp_timer_get_time();
+        const int input_win_len     = (int)MAIN_WINDOW_LENS[i];
+        const int input_size        = (int)MAIN_WINDOW_LENS[i] * CONFIG_INPUT_CHANNELS;
+
+        const int output_win_len    = (int)MAIN_OUT_LENS[i];
+        const int output_size       = (int)MAIN_OUT_LENS[i] * CONFIG_OUTPUT_CHANNELS;
+
+        // Calculates the effective trial length which is not always = INPUT_TRIAL_LENGTH / DOWNSAMPLE_RATE
+        // Due to rounding
+        const int output_trial_len  = (int)(MAIN_Y_SIZES[i] / CONFIG_OUTPUT_CHANNELS);
+
         const int intermediate_size = (int)MAIN_INTERMEDIATE_SIZE[i];
         const int first_out_len     = (int)MAIN_OUT_LENS[i];
         const int out_len           = output_size / CONFIG_OUTPUT_CHANNELS;
         
-        memcpy(input_window, x_data[i], input_size * sizeof(float));
-        memcpy(correct_window, y_data[i], output_size * sizeof(float));
+        const int state_size        = 2 * LSTM_FEATURES;
 
-        final_report_size = strlen(final_report);
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Window %ld\nQuant Type: Float32\n", MAIN_WINDOW_LENS[i]);
-    
-        ESP_LOGI("MAIN", "Infenencing Config (%d) INT First 2 models and Float32 last", i);
+        printf(
+            "input_win_len:%d\ninput_size:%d\noutput_win_len:%d\noutput_size:%d\noutput_trial_len:%d\nintermediate_size:%d\nfirst_out_len:%d\nstate_size%d\n", input_win_len,
+        input_size, output_win_len, output_size, output_trial_len, intermediate_size, first_out_len, state_size);
+        // LOOP over the entire trial window by window
+        // loope for j, j< trial_length, j+=window_len
+        int in_win =0;
+        int out_win =0;
+
+        //Need to maintain h and c states accross trials
+        // Inputs:  [ x (56*step) | h (2*56) | c (2*56) ]
+        float* second_input_ptr = new float[intermediate_size + 2 * state_size]{0};
+
+        const int* second_input_lengths = new const int[3]{
+            intermediate_size,
+            state_size,
+            state_size
+        };
+
+        ESP_LOGI("MAIN", "Infenencing Config (%d)", i);
+
         master_handle->init_models(
         i*6 + 3,
         i*6 + 4,
-        i*6 + 5,
+        i*6 + 2,
         true, final_report, final_report_size);
+        
+        int win_count = 0;
+        float current_mse;
+        while(in_win < input_trial_len && out_win < output_trial_len)
+        {
+            ESP_LOGI("MAIN", "Win: %d", win_count);
+            //memory copy from flash to sram arrays
+            memcpy(&input_trial[in_win * CONFIG_INPUT_CHANNELS],
+            &x_data[0][in_win * CONFIG_INPUT_CHANNELS * sizeof(float)], input_size * sizeof(float));
 
-        //allocate data from flash onto sram
-        master_handle->dual_inference(&input_window[0], input_size,
-                                      &output_window[0], output_size,
-                                      intermediate_size, first_out_len,
-                                      &final_report[0], REPORT_MAX);
+            memcpy(&correct_trial[out_win * CONFIG_OUTPUT_CHANNELS], 
+            &y_data[i][out_win * CONFIG_OUTPUT_CHANNELS * sizeof(float)], output_size * sizeof(float));
+            
+
+            final_report_size = strlen(final_report);
+            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Window %ld\nQuant Type: Float32\n", MAIN_WINDOW_LENS[i]);
         
-        mse = master_handle->print_output(output_window, output_size, &correct_window[0]);
+            if(win_count == 1)
+            {
+                master_handle->dual_inference(
+                &input_trial[in_win * CONFIG_INPUT_CHANNELS],
+                input_size,
+                &output_trial[out_win * CONFIG_OUTPUT_CHANNELS],
+                output_size,
+                second_input_ptr,
+                second_input_lengths,
+                intermediate_size, first_out_len,
+                &final_report[0], REPORT_MAX);
+            }else{
+                master_handle->dual_inference(
+                &input_trial[in_win * CONFIG_INPUT_CHANNELS],
+                input_size,
+                &output_trial[out_win * CONFIG_OUTPUT_CHANNELS],
+                output_size,
+                second_input_ptr,
+                second_input_lengths,
+                intermediate_size, first_out_len,
+                nullptr, REPORT_MAX);
+
+            }
+            
+            
+            current_mse = master_handle->print_output(
+            &output_trial[out_win * CONFIG_OUTPUT_CHANNELS],
+            output_size, 
+            &correct_trial[out_win * CONFIG_OUTPUT_CHANNELS]);
+
+            accumulated_mse += current_mse;
+            if(current_mse > max_mse)
+                max_mse = current_mse;
+
+            // UPDATE
+            in_win +=  input_win_len;
+            out_win += output_win_len;
+            win_count++;
+        }
+
+        float avg_mse = accumulated_mse / win_count;
+        final_report_size = strlen(final_report);
+        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Avg MSE: %0.4f\n, Max MSE: %0.4f\n", avg_mse, max_mse);
         
+        max_mse = -1;
+        accumulated_mse = 0;
+
         master_handle->clear_models();
         
+        delete[] second_input_ptr;
+        delete[] second_input_lengths;
+
+        uint64_t durationTrial = esp_timer_get_time() - startTimeTrial;
+
         final_report_size = strlen(final_report);
-
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: %0.4f\n\n", mse);
-
+        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Total Trial Time: %lld \xCE\xBCs\n", durationTrial);
+        
+        ESP_LOGI("TRIAL", "TRIAL %d ENDED, TOTAL TIME: %lld \xCE\xBCs, AVG MSE: %0.4f\n\n", i, durationTrial, avg_mse);
         vTaskDelay(10 / portTICK_PERIOD_MS); // Adjust delay as needed for timing
         
     }

@@ -56,7 +56,7 @@ bool ModelFlash::allocatePointerOnFlash(const char* partition, const uint8_t** o
 
 }
 bool ModelFlash::allocatePointerOnFlashXY(const char* partition,
-        const uint32_t base_x, const uint8_t** out_ptrs_x, 
+        const uint32_t base_x, const uint8_t** out_ptr_x, 
         const uint32_t base_y, const uint8_t** out_ptrs_y,
         int count,
         const uint32_t* x_offsets,
@@ -88,12 +88,8 @@ bool ModelFlash::allocatePointerOnFlashXY(const char* partition,
     }
 
     const uint8_t* base8 = static_cast<const uint8_t*>(base);
-    for (int i = 0; i < count; i++) {
-        uint32_t current_offset = offset_type == OFFSET_TYPE::INT8 ? x_offsets[i] : x_offsets[i] * sizeof(float);
-        //ESP_LOGW("FLASH", "Current Offset %llu", (unsigned long long)current_offset);
-        out_ptrs_x[i] = base8 + base_x + current_offset;
-    }
-
+    out_ptr_x[0] = base8 + base_x;
+    
     for (int i = 0; i < count; i++) {
         uint32_t current_offset = offset_type == OFFSET_TYPE::INT8 ? y_offsets[i] : y_offsets[i] * sizeof(float);
         //ESP_LOGW("FLASH", "Current Offset %llu", (unsigned long long)current_offset);

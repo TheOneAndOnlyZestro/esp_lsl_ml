@@ -51,9 +51,10 @@ class MasterHandle {
         void clear_models();
 
         void dual_inference(const float* input_ptr, int input_size,
-                                  float* output_ptr, int output_size,
-                                  int intermediate_size, int first_out_len,
-                                  char* report_buffer, int size);
+                            float* output_ptr, int output_size,
+                            float* second_input_ptr, const int* second_input_lengths,
+                            int intermediate_size, int first_out_len,
+                            char* report_buffer, int size);
 
         void build_elu_lut(float in_scale, int32_t in_zp,
                         float out_scale, int32_t out_zp, float alpha);
