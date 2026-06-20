@@ -140,7 +140,10 @@ void Model::callProfilerLog() const
 
     printf("Total Ticks %ld \n",profiler.GetTotalTicks());
 }
-
+int32_t Model::getTotalTicks() const
+{
+    return profiler.GetTotalTicks();
+}
 void Model::getTotalProfileTimePerOp()
 {
     profiler.LogTicksPerTagCsv();

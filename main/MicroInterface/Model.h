@@ -57,6 +57,7 @@ public:
     TfLiteType getInputType(int i)    const {return input[i]->type; }
     
     void getTotalProfileTimePerOp() ;
+    int32_t getTotalTicks() const;
     void callProfilerLog() const;
     bool isInitialized() const { return initialized; }
 

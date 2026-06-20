@@ -78,20 +78,344 @@
 
 // }
 
+// void run_app()
+// {
+    
+//     // We need to now do a for loop for all models 
+//     // Step 1: Pull the data from lsl into the windowed buffer
+//     // Step 2: Run inference on the windowed buffer which should put the appropriate output into the output buffer
+//     // Step 3: Push the output data buffer to the LSL outlet
+    
+//     char final_report[REPORT_MAX] = {0};
+//     int final_report_size = strlen(final_report);
+//     ModelFlash* mf = new ModelFlash();
+//     const uint8_t** x_data = new const uint8_t*[1];
+//     const uint8_t** y_data = new const uint8_t*[DATA_CONFIG_COUNT];
+    
+
+//     mf->allocatePointerOnFlashXY(
+//         "benchmark_data",
+//         X_REGION_BYTE_OFFSET,
+//         x_data,
+//         Y_REGION_BYTE_OFFSET,
+//         y_data,
+//         DATA_CONFIG_COUNT,
+//         MAIN_X_OFFSETS,
+//         MAIN_Y_OFFSETS,
+//         OFFSET_TYPE::FLOAT32
+//     );
+    
+    
+    
+//     uint32_t max_output_size = 0;
+//     for (int i = 0; i < DATA_CONFIG_COUNT; i++) {
+//         if (MAIN_Y_SIZES[i] > max_output_size) max_output_size = MAIN_Y_SIZES[i];
+//     }
+//     float* output_trial = new float[max_output_size]; //biggest output_trial = input_trial / downsample_rate
+//     float* correct_trial = new float[max_output_size];
+
+//     const uint32_t max_input_size = Y_REGION_BYTE_OFFSET / sizeof(float);
+//     const uint32_t input_trial_len = max_input_size / 8;
+
+//     float* input_trial = new float[max_input_size]; // max_input_size = samples / trial (about 9000 * 8 channels)
+//     const uint8_t** models_on_flash = new const uint8_t*[MODEL_COUNT];
+    
+//     bool success = mf->allocatePointerOnFlash("benchmark_models", models_on_flash, 
+//     MODEL_COUNT, MODEL_OFFSETS, OFFSET_TYPE::INT8);
+
+//     if (!success) {
+//         ESP_LOGE("MAIN", "Could not initialize mmaped pointers");
+//         return;
+//     }
+        
+//     MasterHandle* master_handle = new MasterHandle(MODEL_COUNT,
+//         models_on_flash,
+//         INPUT_SIZES,
+//         OUTPUT_SIZES, 
+//         MODEL_SIZES);
+    
+
+//     // Accumulate MSE in double: per-window MSE can be ~1e-8 or smaller, and
+//     // summing many of those in float32 loses the low-order bits.
+//     double accumulated_mse = 0;
+//     double max_mse = -1.0;
+
+//     for(int i = 0; i < CONFIG_COUNT; i++)
+//     {   
+//         uint64_t startTimeTrial = esp_timer_get_time();
+//         const int input_win_len     = (int)MAIN_WINDOW_LENS[i];
+//         const int input_size        = (int)MAIN_WINDOW_LENS[i] * CONFIG_INPUT_CHANNELS;
+
+//         const int output_win_len    = (int)MAIN_OUT_LENS[i];
+//         const int output_size       = (int)MAIN_OUT_LENS[i] * CONFIG_OUTPUT_CHANNELS;
+
+//         // Calculates the effective trial length which is not always = INPUT_TRIAL_LENGTH / DOWNSAMPLE_RATE
+//         // Due to rounding
+//         const int output_trial_len  = (int)(MAIN_Y_SIZES[i] / CONFIG_OUTPUT_CHANNELS);
+
+//         const int intermediate_size = (int)MAIN_INTERMEDIATE_SIZE[i];
+//         const int first_out_len     = (int)MAIN_OUT_LENS[i];
+//         const int out_len           = output_size / CONFIG_OUTPUT_CHANNELS;
+        
+//         const int state_size        = 2 * LSTM_FEATURES;
+
+//         printf(
+//         "input_win_len:%d\ninput_size:%d\noutput_win_len:%d\noutput_size:%d\noutput_trial_len:%d\nintermediate_size:%d\nfirst_out_len:%d\nstate_size%d\n", input_win_len,
+//         input_size, output_win_len, output_size, output_trial_len, intermediate_size, first_out_len, state_size);
+//         // LOOP over the entire trial window by window
+//         // loope for j, j< trial_length, j+=window_len
+//         int in_win =0;
+//         int out_win =0;
+
+//         //Need to maintain h and c states accross trials
+//         // Inputs:  [ x (56*step) | h (2*56) | c (2*56) ]
+//         float* second_input_ptr = new float[intermediate_size + 2 * state_size]{0};
+
+//         const int* second_input_lengths = new const int[3]{
+//             intermediate_size,
+//             state_size,
+//             state_size
+//         };
+
+//         ESP_LOGI("MAIN", "Infenencing Config (%d)", i);
+
+//         // 0,1,2,3. 4,5,6,7
+//                         // master_handle->init_models(‘‘‘
+//         // i*8 + 4,
+//         // i*8 + 5,
+//         // i*8 + 2,
+//         // i*8 + 7,
+//         // true, final_report, final_report_size);
+//         // master_handle->init_models(
+//         // i*8 + 0,
+//         // i*8 + 1,
+//         // i*8 + 2,
+//         // i*8 + 3,
+//         // true, final_report, final_report_size);
+
+//         //trying with only the first one being int8
+//         master_handle->init_models(
+//         i*8 + 4,
+//         i*8 + 5,
+//         i*8 + 2,
+//         i*8 + 3,
+//         true, final_report, final_report_size);
+
+//         int win_count = 0;
+//         double current_mse;
+//         while(in_win < input_trial_len && out_win < output_trial_len)
+//         {   
+//             const int trial_len_samples = (int)input_trial_len;   // = max_input_size / 8, per-channel length
+//             const int win_start_t        = win_count * input_win_len;   // start time of this window (samples)
+            
+//             const int out_trial_len = (int)(MAIN_Y_SIZES[i] / CONFIG_OUTPUT_CHANNELS);
+//             const int out_start_t   = win_count * output_win_len;   // same window counter as input
+//             ESP_LOGI("MAIN", "Win: %d", win_count);
+//             //memory copy from flash to sram arrays
+//             // memcpy(&input_trial[in_win * CONFIG_INPUT_CHANNELS],
+//             // &x_data[0][in_win * CONFIG_INPUT_CHANNELS * sizeof(float)], input_size * sizeof(float));
+//             // memcpy(&correct_trial[out_win * CONFIG_OUTPUT_CHANNELS], 
+//             // &y_data[i][out_win * CONFIG_OUTPUT_CHANNELS * sizeof(float)], output_size * sizeof(float));
+
+//             for (int ch = 0; ch < CONFIG_INPUT_CHANNELS; ch++) {
+//                 const float* src =
+//                     (const float*)x_data[0] + (size_t)ch * trial_len_samples + win_start_t;
+//                 memcpy(&input_trial[ch * input_win_len],
+//                     src,
+//                     input_win_len * sizeof(float));
+//             }
+
+//             for (int ch = 0; ch < CONFIG_OUTPUT_CHANNELS; ch++) {
+//                 const float* src =
+//                     (const float*)y_data[i] + (size_t)ch * out_trial_len + out_start_t;
+//                 memcpy(&correct_trial[ch * output_win_len],
+//                     src,
+//                     output_win_len * sizeof(float));
+//             }
+
+//             final_report_size = strlen(final_report);
+//             snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Window %ld\nQuant Type: Float32\n", MAIN_WINDOW_LENS[i]);
+        
+//             if(win_count == 1)
+//             {
+//                 master_handle->dual_inference(
+//                 &input_trial[0],
+//                 input_size,
+//                 &output_trial[0],
+//                 output_size,
+//                 second_input_ptr,
+//                 second_input_lengths,
+//                 intermediate_size, first_out_len,
+//                 &final_report[0], REPORT_MAX);
+//             }else{
+//                 master_handle->dual_inference(
+//                 &input_trial[0],
+//                 input_size,
+//                 &output_trial[0],
+//                 output_size,
+//                 second_input_ptr,
+//                 second_input_lengths,
+//                 intermediate_size, first_out_len,
+//                 nullptr, REPORT_MAX);
+
+//             }
+
+//             // if(win_count == 1)
+//             // {
+//             //     master_handle->dual_inference_4(
+//             //     &input_trial[0],
+//             //     input_size,
+//             //     &output_trial[0],
+//             //     output_size,
+//             //     second_input_ptr,
+//             //     second_input_lengths,
+//             //     intermediate_size, first_out_len,
+//             //     &final_report[0], REPORT_MAX);
+//             // }else{
+//             //     master_handle->dual_inference_4(
+//             //     &input_trial[0],
+//             //     input_size,
+//             //     &output_trial[0],
+//             //     output_size,
+//             //     second_input_ptr,
+//             //     second_input_lengths,
+//             //     intermediate_size, first_out_len,
+//             //     nullptr, REPORT_MAX);
+
+//             // }
+            
+            
+//             current_mse = master_handle->print_output(
+//             &output_trial[0],
+//             output_size, 
+//             &correct_trial[0]);
+
+//             accumulated_mse += current_mse;
+//             if(current_mse > max_mse)
+//                 max_mse = current_mse;
+               
+//             printf("current mse: %.6e\n", current_mse);
+            
+//             // UPDATE
+//             in_win +=  input_win_len;
+//             out_win += output_win_len;
+//             win_count++;
+//         }
+
+//         double avg_mse = accumulated_mse / win_count;
+//         final_report_size = strlen(final_report);
+//         snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Avg MSE: %.6e\nMax MSE: %.6e\n", avg_mse, max_mse);
+        
+//         max_mse = -1;
+//         accumulated_mse = 0;
+
+//         master_handle->clear_models();
+        
+//         delete[] second_input_ptr;
+//         delete[] second_input_lengths;
+
+//         uint64_t durationTrial = esp_timer_get_time() - startTimeTrial;
+
+//         final_report_size = strlen(final_report);
+//         snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Total Trial Time: %lld \xCE\xBCs\n", durationTrial);
+        
+//         ESP_LOGI("TRIAL", "TRIAL %d ENDED, TOTAL TIME: %lld \xCE\xBCs, AVG MSE: %.6e\n\n", i, durationTrial, avg_mse);
+//         vTaskDelay(10 / portTICK_PERIOD_MS); // Adjust delay as needed for timing
+        
+//     }
+    
+//     ESP_LOGI("FINAL REPORT", "%s", final_report);
+    
+// }
+
+// ============================================================
+// Per-window inference + scoring, lifted out of run_app's while loop.
+// Returns the MSE for this window. All buffers/state are passed in so
+// the caller still owns lifetime and the h/c carry across windows.
+// ============================================================
+static double run_inference_window(
+    MasterHandle* master_handle,
+    const MasterHandle::QuantConfig& qc,
+    int win_count,
+    const uint8_t* const* x_data,
+    const uint8_t* const* y_data,
+    int config_index,
+    int trial_len_samples,
+    int out_trial_len,
+    int input_win_len, int input_size,
+    int output_win_len, int output_size,
+    int intermediate_size, int first_out_len,
+    float* input_trial, float* output_trial, float* correct_trial,
+    float* second_input_ptr, const int* second_input_lengths,
+    char* final_report)
+{
+    const int win_start_t = win_count * input_win_len;   // start time of this window (samples)
+    const int out_start_t = win_count * output_win_len;  // same window counter as input
+    ESP_LOGI("MAIN", "Win: %d", win_count);
+    //memory copy from flash to sram arrays
+    // memcpy(&input_trial[in_win * CONFIG_INPUT_CHANNELS],
+    // &x_data[0][in_win * CONFIG_INPUT_CHANNELS * sizeof(float)], input_size * sizeof(float));
+    // memcpy(&correct_trial[out_win * CONFIG_OUTPUT_CHANNELS],
+    // &y_data[i][out_win * CONFIG_OUTPUT_CHANNELS * sizeof(float)], output_size * sizeof(float));
+
+    for (int ch = 0; ch < CONFIG_INPUT_CHANNELS; ch++) {
+        const float* src =
+            (const float*)x_data[0] + (size_t)ch * trial_len_samples + win_start_t;
+        memcpy(&input_trial[ch * input_win_len],
+            src,
+            input_win_len * sizeof(float));
+    }
+
+    for (int ch = 0; ch < CONFIG_OUTPUT_CHANNELS; ch++) {
+        const float* src =
+            (const float*)y_data[config_index] + (size_t)ch * out_trial_len + out_start_t;
+        memcpy(&correct_trial[ch * output_win_len],
+            src,
+            output_win_len * sizeof(float));
+    }
+
+    int final_report_size = strlen(final_report);
+    snprintf(final_report + final_report_size, REPORT_MAX - final_report_size,
+             "Model Window %ld\nQuant Type: Float32\n", MAIN_WINDOW_LENS[config_index]);
+
+    // Only the 2nd window (win_count == 1) writes timing into the report.
+    char* report_arg = (win_count == 1) ? &final_report[0] : nullptr;
+
+    master_handle->dual_inference(
+        qc,
+        &input_trial[0],
+        input_size,
+        &output_trial[0],
+        output_size,
+        second_input_ptr,
+        second_input_lengths,
+        intermediate_size, first_out_len,
+        report_arg, REPORT_MAX);
+
+    double current_mse = master_handle->print_output(
+        &output_trial[0],
+        output_size,
+        &correct_trial[0]);
+
+    printf("current mse: %.6e\n", current_mse);
+    return current_mse;
+}
+
+
 void run_app()
 {
-    
-    // We need to now do a for loop for all models 
+
+    // We need to now do a for loop for all models
     // Step 1: Pull the data from lsl into the windowed buffer
     // Step 2: Run inference on the windowed buffer which should put the appropriate output into the output buffer
     // Step 3: Push the output data buffer to the LSL outlet
-    
+
     char final_report[REPORT_MAX] = {0};
     int final_report_size = strlen(final_report);
     ModelFlash* mf = new ModelFlash();
     const uint8_t** x_data = new const uint8_t*[1];
     const uint8_t** y_data = new const uint8_t*[DATA_CONFIG_COUNT];
-    
+
 
     mf->allocatePointerOnFlashXY(
         "benchmark_data",
@@ -104,9 +428,9 @@ void run_app()
         MAIN_Y_OFFSETS,
         OFFSET_TYPE::FLOAT32
     );
-    
-    
-    
+
+
+
     uint32_t max_output_size = 0;
     for (int i = 0; i < DATA_CONFIG_COUNT; i++) {
         if (MAIN_Y_SIZES[i] > max_output_size) max_output_size = MAIN_Y_SIZES[i];
@@ -119,27 +443,29 @@ void run_app()
 
     float* input_trial = new float[max_input_size]; // max_input_size = samples / trial (about 9000 * 8 channels)
     const uint8_t** models_on_flash = new const uint8_t*[MODEL_COUNT];
-    
-    bool success = mf->allocatePointerOnFlash("benchmark_models", models_on_flash, 
+
+    bool success = mf->allocatePointerOnFlash("benchmark_models", models_on_flash,
     MODEL_COUNT, MODEL_OFFSETS, OFFSET_TYPE::INT8);
 
     if (!success) {
         ESP_LOGE("MAIN", "Could not initialize mmaped pointers");
         return;
     }
-        
+
     MasterHandle* master_handle = new MasterHandle(MODEL_COUNT,
         models_on_flash,
         INPUT_SIZES,
-        OUTPUT_SIZES, 
+        OUTPUT_SIZES,
         MODEL_SIZES);
-    
 
-    float accumulated_mse = 0;
-    float max_mse = -1.0;
+
+    // Accumulate MSE in double: per-window MSE can be ~1e-8 or smaller, and
+    // summing many of those in float32 loses the low-order bits.
+    double accumulated_mse = 0;
+    double max_mse = -1.0;
 
     for(int i =0; i < CONFIG_COUNT; i++)
-    {   
+    {
         uint64_t startTimeTrial = esp_timer_get_time();
         const int input_win_len     = (int)MAIN_WINDOW_LENS[i];
         const int input_size        = (int)MAIN_WINDOW_LENS[i] * CONFIG_INPUT_CHANNELS;
@@ -154,7 +480,7 @@ void run_app()
         const int intermediate_size = (int)MAIN_INTERMEDIATE_SIZE[i];
         const int first_out_len     = (int)MAIN_OUT_LENS[i];
         const int out_len           = output_size / CONFIG_OUTPUT_CHANNELS;
-        
+
         const int state_size        = 2 * LSTM_FEATURES;
 
         printf(
@@ -178,12 +504,12 @@ void run_app()
         ESP_LOGI("MAIN", "Infenencing Config (%d)", i);
 
         // 0,1,2,3. 4,5,6,7
-        master_handle->init_models(
-        i*8 + 4,
-        i*8 + 5,
-        i*8 + 2,
-        i*8 + 3,
-        true, final_report, final_report_size);
+        // master_handle->init_models(
+        // i*8 + 4,
+        // i*8 + 5,
+        // i*8 + 2,
+        // i*8 + 7,
+        // true, final_report, final_report_size);
         // master_handle->init_models(
         // i*8 + 0,
         // i*8 + 1,
@@ -191,116 +517,61 @@ void run_app()
         // i*8 + 3,
         // true, final_report, final_report_size);
 
+        //trying with only the first one being int8
+        master_handle->init_models(
+        i*8 + 4,
+        i*8 + 1,
+        i*8 + 2,
+        i*8 + 3,
+        true, final_report, final_report_size);
+
+        // Pick the per-stage quant variants to match the init_models indices above.
+        // Swap any pointer here (and the matching index above) to change a stage
+        // between int8 and float32 at runtime -- no recompile of dual_inference.
+        // Current config: model[0]=int8 (idx +4), model[1..3]=float32 (idx +1,+2,+3).
+        MasterHandle::QuantConfig qc;
+        qc.first_a   = &MasterHandle::stage1_first_a_f32;   // i*8 + 4  -> int8
+        qc.first_b   = &MasterHandle::stage2_first_b_f32;    // i*8 + 1  -> float32
+        qc.lstm_step = &MasterHandle::lstm_step_f32;         // i*8 + 2  -> float32
+        qc.reg_step  = &MasterHandle::regressor_step_f32;    // i*8 + 3  -> float32
+
         int win_count = 0;
-        float current_mse;
+        double current_mse;
         while(in_win < input_trial_len && out_win < output_trial_len)
-        {   
+        {
             const int trial_len_samples = (int)input_trial_len;   // = max_input_size / 8, per-channel length
-            const int win_start_t        = win_count * input_win_len;   // start time of this window (samples)
-            
             const int out_trial_len = (int)(MAIN_Y_SIZES[i] / CONFIG_OUTPUT_CHANNELS);
-            const int out_start_t   = win_count * output_win_len;   // same window counter as input
-            ESP_LOGI("MAIN", "Win: %d", win_count);
-            //memory copy from flash to sram arrays
-            // memcpy(&input_trial[in_win * CONFIG_INPUT_CHANNELS],
-            // &x_data[0][in_win * CONFIG_INPUT_CHANNELS * sizeof(float)], input_size * sizeof(float));
-            // memcpy(&correct_trial[out_win * CONFIG_OUTPUT_CHANNELS], 
-            // &y_data[i][out_win * CONFIG_OUTPUT_CHANNELS * sizeof(float)], output_size * sizeof(float));
 
-            for (int ch = 0; ch < CONFIG_INPUT_CHANNELS; ch++) {
-                const float* src =
-                    (const float*)x_data[0] + (size_t)ch * trial_len_samples + win_start_t;
-                memcpy(&input_trial[ch * input_win_len],
-                    src,
-                    input_win_len * sizeof(float));
-            }
-
-            for (int ch = 0; ch < CONFIG_OUTPUT_CHANNELS; ch++) {
-                const float* src =
-                    (const float*)y_data[i] + (size_t)ch * out_trial_len + out_start_t;
-                memcpy(&correct_trial[ch * output_win_len],
-                    src,
-                    output_win_len * sizeof(float));
-            }
-
-            final_report_size = strlen(final_report);
-            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Window %ld\nQuant Type: Float32\n", MAIN_WINDOW_LENS[i]);
-        
-            // if(win_count == 1)
-            // {
-            //     master_handle->dual_inference_float(
-            //     &input_trial[0],
-            //     input_size,
-            //     &output_trial[0],
-            //     output_size,
-            //     second_input_ptr,
-            //     second_input_lengths,
-            //     intermediate_size, first_out_len,
-            //     &final_report[0], REPORT_MAX);
-            // }else{
-            //     master_handle->dual_inference_float(
-            //     &input_trial[0],
-            //     input_size,
-            //     &output_trial[0],
-            //     output_size,
-            //     second_input_ptr,
-            //     second_input_lengths,
-            //     intermediate_size, first_out_len,
-            //     nullptr, REPORT_MAX);
-
-            // }
-
-            if(win_count == 1)
-            {
-                master_handle->dual_inference_4(
-                &input_trial[0],
-                input_size,
-                &output_trial[0],
-                output_size,
-                second_input_ptr,
-                second_input_lengths,
+            current_mse = run_inference_window(
+                master_handle, qc, win_count,
+                x_data, y_data, i,
+                trial_len_samples, out_trial_len,
+                input_win_len, input_size,
+                output_win_len, output_size,
                 intermediate_size, first_out_len,
-                &final_report[0], REPORT_MAX);
-            }else{
-                master_handle->dual_inference_4(
-                &input_trial[0],
-                input_size,
-                &output_trial[0],
-                output_size,
-                second_input_ptr,
-                second_input_lengths,
-                intermediate_size, first_out_len,
-                nullptr, REPORT_MAX);
-
-            }
-            
-            
-            current_mse = master_handle->print_output(
-            &output_trial[0],
-            output_size, 
-            &correct_trial[0]);
+                input_trial, output_trial, correct_trial,
+                second_input_ptr, second_input_lengths,
+                final_report);
 
             accumulated_mse += current_mse;
             if(current_mse > max_mse)
                 max_mse = current_mse;
-               
-            printf("current mse: %0.4f\n", current_mse);
-            
+
             // UPDATE
             in_win +=  input_win_len;
             out_win += output_win_len;
             win_count++;
         }
 
-        float avg_mse = accumulated_mse / win_count;
+        double avg_mse = accumulated_mse / win_count;
         final_report_size = strlen(final_report);
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Avg MSE: %0.4f\n, Max MSE: %0.4f\n", avg_mse, max_mse);
-        
+        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Avg MSE: %.6e\nMax MSE: %.6e\n", avg_mse, max_mse);
+
         max_mse = -1;
         accumulated_mse = 0;
 
         master_handle->clear_models();
-        
+
         delete[] second_input_ptr;
         delete[] second_input_lengths;
 
@@ -308,14 +579,14 @@ void run_app()
 
         final_report_size = strlen(final_report);
         snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Total Trial Time: %lld \xCE\xBCs\n", durationTrial);
-        
-        ESP_LOGI("TRIAL", "TRIAL %d ENDED, TOTAL TIME: %lld \xCE\xBCs, AVG MSE: %0.4f\n\n", i, durationTrial, avg_mse);
+
+        ESP_LOGI("TRIAL", "TRIAL %d ENDED, TOTAL TIME: %lld \xCE\xBCs, AVG MSE: %.6e\n\n", i, durationTrial, avg_mse);
         vTaskDelay(10 / portTICK_PERIOD_MS); // Adjust delay as needed for timing
-        
+
     }
-    
+
     ESP_LOGI("FINAL REPORT", "%s", final_report);
-    
+
 }
 
 // change input sizes and output size to be double pointers
