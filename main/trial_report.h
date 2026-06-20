@@ -54,10 +54,14 @@ struct TrialStats {
     const char* quant_b    = "f32";
     const char* quant_lstm = "f32";
     const char* quant_reg  = "f32";
-    double size_a_kb    = 0.0;
+    double size_a_kb    = 0.0;   // flash model size
     double size_b_kb    = 0.0;
     double size_lstm_kb = 0.0;
     double size_reg_kb  = 0.0;
+    double arena_a_kb    = 0.0;  // tensor arena used at AllocateTensors()
+    double arena_b_kb    = 0.0;
+    double arena_lstm_kb = 0.0;
+    double arena_reg_kb  = 0.0;
 
     // per-window reductions
     AvgMax infa, infb;          // stage ticks
@@ -101,6 +105,7 @@ inline void trial_report_header(char* buf, int size)
         "config,window_len,step,"
         "quant_a,quant_b,quant_lstm,quant_reg,"
         "size_a_kb,size_b_kb,size_lstm_kb,size_reg_kb,"
+        "arena_a_kb,arena_b_kb,arena_lstm_kb,arena_reg_kb,"
         "infa_ticks_avg,infa_ticks_max,elua_us_avg,elua_us_max,"
         "infb_ticks_avg,infb_ticks_max,elub_us_avg,elub_us_max,"
         "lstm_step_ticks_avg,lstm_step_ticks_max,"
@@ -118,6 +123,7 @@ inline void trial_report_row(char* buf, int size, const TrialStats& t)
         "%d,%ld,%d,"
         "%s,%s,%s,%s,"
         "%.3f,%.3f,%.3f,%.3f,"
+        "%.3f,%.3f,%.3f,%.3f,"
         "%.2f,%.0f,%.2f,%.0f,"
         "%.2f,%.0f,%.2f,%.0f,"
         "%.2f,%.0f,"
@@ -128,6 +134,7 @@ inline void trial_report_row(char* buf, int size, const TrialStats& t)
         t.config, t.window_len, t.step,
         t.quant_a, t.quant_b, t.quant_lstm, t.quant_reg,
         t.size_a_kb, t.size_b_kb, t.size_lstm_kb, t.size_reg_kb,
+        t.arena_a_kb, t.arena_b_kb, t.arena_lstm_kb, t.arena_reg_kb,
         t.infa.avg(), t.infa.max(), t.elua.avg(), t.elua.max(),
         t.infb.avg(), t.infb.max(), t.elub.avg(), t.elub.max(),
         t.lstm_step.avg(), t.lstm_step.max(),

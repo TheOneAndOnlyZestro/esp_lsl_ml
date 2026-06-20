@@ -330,8 +330,8 @@
 
 // ============================================================
 // Per-window inference + scoring, lifted out of run_app's while loop.
-// Returns the MSE for this window. All buffers/state are passed in so
-// the caller still owns lifetime and the h/c carry across windows.
+// Fills `wt` with this window's stage timings and pushes per-step ticks
+// into `trial` (via dual_inference). Returns the window MSE.
 // ============================================================
 static double run_inference_window(
     MasterHandle* master_handle,
@@ -347,7 +347,7 @@ static double run_inference_window(
     int intermediate_size, int first_out_len,
     float* input_trial, float* output_trial, float* correct_trial,
     float* second_input_ptr, const int* second_input_lengths,
-    char* final_report)
+    WindowStageTimes* wt, TrialStats* trial)
 {
     const int win_start_t = win_count * input_win_len;   // start time of this window (samples)
     const int out_start_t = win_count * output_win_len;  // same window counter as input
@@ -374,13 +374,6 @@ static double run_inference_window(
             output_win_len * sizeof(float));
     }
 
-    int final_report_size = strlen(final_report);
-    snprintf(final_report + final_report_size, REPORT_MAX - final_report_size,
-             "Model Window %ld\nQuant Type: Float32\n", MAIN_WINDOW_LENS[config_index]);
-
-    // Only the 2nd window (win_count == 1) writes timing into the report.
-    char* report_arg = (win_count == 1) ? &final_report[0] : nullptr;
-
     master_handle->dual_inference(
         qc,
         &input_trial[0],
@@ -390,14 +383,14 @@ static double run_inference_window(
         second_input_ptr,
         second_input_lengths,
         intermediate_size, first_out_len,
-        report_arg, REPORT_MAX);
+        wt, trial);
 
     double current_mse = master_handle->print_output(
         &output_trial[0],
         output_size,
         &correct_trial[0]);
 
-    printf("current mse: %.6e\n", current_mse);
+    wt->mse = current_mse;
     return current_mse;
 }
 
@@ -411,7 +404,6 @@ void run_app()
     // Step 3: Push the output data buffer to the LSL outlet
 
     char final_report[REPORT_MAX] = {0};
-    int final_report_size = strlen(final_report);
     ModelFlash* mf = new ModelFlash();
     const uint8_t** x_data = new const uint8_t*[1];
     const uint8_t** y_data = new const uint8_t*[DATA_CONFIG_COUNT];
@@ -458,11 +450,8 @@ void run_app()
         OUTPUT_SIZES,
         MODEL_SIZES);
 
-
-    // Accumulate MSE in double: per-window MSE can be ~1e-8 or smaller, and
-    // summing many of those in float32 loses the low-order bits.
-    double accumulated_mse = 0;
-    double max_mse = -1.0;
+    // CSV header, written ONCE at the top of the report.
+    trial_report_header(final_report, REPORT_MAX);
 
     for(int i =0; i < CONFIG_COUNT; i++)
     {
@@ -482,6 +471,7 @@ void run_app()
         const int out_len           = output_size / CONFIG_OUTPUT_CHANNELS;
 
         const int state_size        = 2 * LSTM_FEATURES;
+        const int lstm_step         = intermediate_size / LSTM_FEATURES;   // step used by the LSTM loop
 
         printf(
         "input_win_len:%d\ninput_size:%d\noutput_win_len:%d\noutput_size:%d\noutput_trial_len:%d\nintermediate_size:%d\nfirst_out_len:%d\nstate_size%d\n", input_win_len,
@@ -504,45 +494,50 @@ void run_app()
         ESP_LOGI("MAIN", "Infenencing Config (%d)", i);
 
         // 0,1,2,3. 4,5,6,7
-        // master_handle->init_models(
-        // i*8 + 4,
-        // i*8 + 5,
-        // i*8 + 2,
-        // i*8 + 7,
-        // true, final_report, final_report_size);
-        // master_handle->init_models(
-        // i*8 + 0,
-        // i*8 + 1,
-        // i*8 + 2,
-        // i*8 + 3,
-        // true, final_report, final_report_size);
-
         //trying with only the first one being int8
-        master_handle->init_models(
-        i*8 + 4,
-        i*8 + 1,
-        i*8 + 2,
-        i*8 + 3,
-        true, final_report, final_report_size);
+        const int idx_a    = i*8 + 4;
+        const int idx_b    = i*8 + 5;
+        const int idx_lstm = i*8 + 2;
+        const int idx_reg  = i*8 + 3;
+        master_handle->init_models(idx_a, idx_b, idx_lstm, idx_reg,
+                                   true, final_report, REPORT_MAX);
 
         // Pick the per-stage quant variants to match the init_models indices above.
-        // Swap any pointer here (and the matching index above) to change a stage
-        // between int8 and float32 at runtime -- no recompile of dual_inference.
-        // Current config: model[0]=int8 (idx +4), model[1..3]=float32 (idx +1,+2,+3).
+        // The labels carried here are what the CSV prints for this trial.
         MasterHandle::QuantConfig qc;
-        qc.first_a   = &MasterHandle::stage1_first_a_f32;   // i*8 + 4  -> int8
-        qc.first_b   = &MasterHandle::stage2_first_b_f32;    // i*8 + 1  -> float32
-        qc.lstm_step = &MasterHandle::lstm_step_f32;         // i*8 + 2  -> float32
-        qc.reg_step  = &MasterHandle::regressor_step_f32;    // i*8 + 3  -> float32
+        qc.first_a   = &MasterHandle::stage1_first_a_int8;   qc.label_a    = "int8";
+        qc.first_b   = &MasterHandle::stage2_first_b_int8;    qc.label_b    = "int8";
+        qc.lstm_step = &MasterHandle::lstm_step_f32;         qc.label_lstm = "f32";
+        qc.reg_step  = &MasterHandle::regressor_step_f32;    qc.label_reg  = "f32";
+
+        // ---- per-trial accumulator ----
+        TrialStats trial;
+        trial.config       = i;
+        trial.window_len   = (long)MAIN_WINDOW_LENS[i];
+        trial.step         = lstm_step;
+        trial.quant_a      = qc.label_a;
+        trial.quant_b      = qc.label_b;
+        trial.quant_lstm   = qc.label_lstm;
+        trial.quant_reg    = qc.label_reg;
+        trial.size_a_kb    = master_handle->getModelSizeBytes(idx_a)    / 1024.0;
+        trial.size_b_kb    = master_handle->getModelSizeBytes(idx_b)    / 1024.0;
+        trial.size_lstm_kb = master_handle->getModelSizeBytes(idx_lstm) / 1024.0;
+        trial.size_reg_kb  = master_handle->getModelSizeBytes(idx_reg)  / 1024.0;
+        // arena used is keyed by INTERNAL slot (0..3), not flash index, and is
+        // valid now because init_models() has run AllocateTensors() for each.
+        trial.arena_a_kb    = master_handle->getArenaUsedBytes(0) / 1024.0;
+        trial.arena_b_kb    = master_handle->getArenaUsedBytes(1) / 1024.0;
+        trial.arena_lstm_kb = master_handle->getArenaUsedBytes(2) / 1024.0;
+        trial.arena_reg_kb  = master_handle->getArenaUsedBytes(3) / 1024.0;
 
         int win_count = 0;
-        double current_mse;
         while(in_win < input_trial_len && out_win < output_trial_len)
         {
             const int trial_len_samples = (int)input_trial_len;   // = max_input_size / 8, per-channel length
             const int out_trial_len = (int)(MAIN_Y_SIZES[i] / CONFIG_OUTPUT_CHANNELS);
 
-            current_mse = run_inference_window(
+            WindowStageTimes wt;   // fresh per window
+            run_inference_window(
                 master_handle, qc, win_count,
                 x_data, y_data, i,
                 trial_len_samples, out_trial_len,
@@ -551,11 +546,9 @@ void run_app()
                 intermediate_size, first_out_len,
                 input_trial, output_trial, correct_trial,
                 second_input_ptr, second_input_lengths,
-                final_report);
+                &wt, &trial);
 
-            accumulated_mse += current_mse;
-            if(current_mse > max_mse)
-                max_mse = current_mse;
+            trial.add_window(wt);   // fold this window into avg/max
 
             // UPDATE
             in_win +=  input_win_len;
@@ -563,28 +556,24 @@ void run_app()
             win_count++;
         }
 
-        double avg_mse = accumulated_mse / win_count;
-        final_report_size = strlen(final_report);
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Avg MSE: %.6e\nMax MSE: %.6e\n", avg_mse, max_mse);
-
-        max_mse = -1;
-        accumulated_mse = 0;
-
         master_handle->clear_models();
 
         delete[] second_input_ptr;
         delete[] second_input_lengths;
 
-        uint64_t durationTrial = esp_timer_get_time() - startTimeTrial;
+        trial.trial_total_us = esp_timer_get_time() - startTimeTrial;
 
-        final_report_size = strlen(final_report);
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Total Trial Time: %lld \xCE\xBCs\n", durationTrial);
+        // ---- emit one CSV row for this trial ----
+        trial_report_row(final_report, REPORT_MAX, trial);
 
-        ESP_LOGI("TRIAL", "TRIAL %d ENDED, TOTAL TIME: %lld \xCE\xBCs, AVG MSE: %.6e\n\n", i, durationTrial, avg_mse);
+        ESP_LOGI("TRIAL", "TRIAL %d ENDED, TOTAL TIME: %llu \xCE\xBCs, AVG MSE: %.6e\n\n",
+                 i, (unsigned long long)trial.trial_total_us, trial.mse.avg());
+
         vTaskDelay(10 / portTICK_PERIOD_MS); // Adjust delay as needed for timing
 
     }
 
+    // The whole report is now a valid CSV: one header line + one row per trial.
     ESP_LOGI("FINAL REPORT", "%s", final_report);
 
 }

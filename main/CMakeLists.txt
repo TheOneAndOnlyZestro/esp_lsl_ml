@@ -1,7 +1,7 @@
 idf_component_register(
 SRCS 
     "master_handle.cpp" "wifi_helper.c"
-    "main.cpp" "Microinterface/Model.cpp" "Microinterface/SequentialModel.cpp" "model_flash.cpp"
+    "main.cpp" "Microinterface/Model.cpp" "model_flash.cpp"
     "benchmark_handle.cpp"
     "lsl_handle.cpp"
     "OptimizedNativeLSTM.cpp"

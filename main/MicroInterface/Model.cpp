@@ -85,9 +85,9 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
         return;
     }
     
-    int report_size = strlen(report_buffer);
-    snprintf(report_buffer + report_size, size - report_size, "0_Model Arena_Size: %zuB\n",
-    interpreter->arena_used_bytes());
+    // int report_size = strlen(report_buffer);
+    // snprintf(report_buffer + report_size, size - report_size, "0_Model Arena_Size: %zuB\n",
+    // interpreter->arena_used_bytes());
     //printf("TENSORS are ready\n");
     
     input = new TfLiteTensor*[input_size];
