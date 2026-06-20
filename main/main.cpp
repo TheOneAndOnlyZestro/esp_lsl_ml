@@ -178,18 +178,18 @@ void run_app()
         ESP_LOGI("MAIN", "Infenencing Config (%d)", i);
 
         // 0,1,2,3. 4,5,6,7
-        // master_handle->init_models(
-        // i*8 + 4,
-        // i*8 + 5,
-        // i*8 + 2,
-        // i*8 + 7,
-        // true, final_report, final_report_size);
         master_handle->init_models(
-        i*8 + 0,
-        i*8 + 1,
+        i*8 + 4,
+        i*8 + 5,
         i*8 + 2,
         i*8 + 3,
         true, final_report, final_report_size);
+        // master_handle->init_models(
+        // i*8 + 0,
+        // i*8 + 1,
+        // i*8 + 2,
+        // i*8 + 3,
+        // true, final_report, final_report_size);
 
         int win_count = 0;
         float current_mse;
@@ -226,9 +226,33 @@ void run_app()
             final_report_size = strlen(final_report);
             snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Window %ld\nQuant Type: Float32\n", MAIN_WINDOW_LENS[i]);
         
+            // if(win_count == 1)
+            // {
+            //     master_handle->dual_inference_float(
+            //     &input_trial[0],
+            //     input_size,
+            //     &output_trial[0],
+            //     output_size,
+            //     second_input_ptr,
+            //     second_input_lengths,
+            //     intermediate_size, first_out_len,
+            //     &final_report[0], REPORT_MAX);
+            // }else{
+            //     master_handle->dual_inference_float(
+            //     &input_trial[0],
+            //     input_size,
+            //     &output_trial[0],
+            //     output_size,
+            //     second_input_ptr,
+            //     second_input_lengths,
+            //     intermediate_size, first_out_len,
+            //     nullptr, REPORT_MAX);
+
+            // }
+
             if(win_count == 1)
             {
-                master_handle->dual_inference_float(
+                master_handle->dual_inference_4(
                 &input_trial[0],
                 input_size,
                 &output_trial[0],
@@ -238,7 +262,7 @@ void run_app()
                 intermediate_size, first_out_len,
                 &final_report[0], REPORT_MAX);
             }else{
-                master_handle->dual_inference_float(
+                master_handle->dual_inference_4(
                 &input_trial[0],
                 input_size,
                 &output_trial[0],

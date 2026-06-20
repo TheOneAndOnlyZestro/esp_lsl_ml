@@ -608,9 +608,9 @@ void MasterHandle::dual_inference_4(const float* input_ptr, int input_size,
             state_size,
             state_size
         };
-    float* intermediate_output_ptr = new float[y_chunk]{0};
+    float* intermediate_output_ptr = new float[y_chunk * step]{0};
     const int* intermediate_output_lengths = new const int[1]{
-        y_chunk
+        y_chunk * step
     };
 
     bool reported_single_step = false;
@@ -678,9 +678,9 @@ void MasterHandle::dual_inference_4(const float* input_ptr, int input_size,
     
     for (int j = 0; j < state_size; j++) {
         second_input_ptr[intermediate_size + j] =
-            intermediate_A_output_ptr[y_chunk + j];                      // h
+            intermediate_A_output_ptr[lstm_chunk + j];                      // h
         second_input_ptr[intermediate_size + state_size + j] =
-            intermediate_A_output_ptr[y_chunk + state_size + j];         // c
+            intermediate_A_output_ptr[lstm_chunk + state_size + j];         // c
     }
     uint64_t duration_second = esp_timer_get_time() - startTime_second;
  
