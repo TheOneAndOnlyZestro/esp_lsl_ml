@@ -6,8 +6,8 @@
 #include "weights.h"
 
 #include "lsl_handle.h"
-#include "binary_manifests/trial_models/manifest_0.h"
-#include "binary_manifests/trial_models/models_manifest_0.h"
+#include "binary_manifests/four_models_corrected/manifest_0.h"
+#include "binary_manifests/four_models_corrected/models_manifest_0.h"
 #define REPORT_MAX 20000
 
 #define LSTM_FEATURES (CONFIG_INPUT_CHANNELS + 48)
@@ -158,7 +158,7 @@ void run_app()
         const int state_size        = 2 * LSTM_FEATURES;
 
         printf(
-            "input_win_len:%d\ninput_size:%d\noutput_win_len:%d\noutput_size:%d\noutput_trial_len:%d\nintermediate_size:%d\nfirst_out_len:%d\nstate_size%d\n", input_win_len,
+        "input_win_len:%d\ninput_size:%d\noutput_win_len:%d\noutput_size:%d\noutput_trial_len:%d\nintermediate_size:%d\nfirst_out_len:%d\nstate_size%d\n", input_win_len,
         input_size, output_win_len, output_size, output_trial_len, intermediate_size, first_out_len, state_size);
         // LOOP over the entire trial window by window
         // loope for j, j< trial_length, j+=window_len
@@ -177,44 +177,71 @@ void run_app()
 
         ESP_LOGI("MAIN", "Infenencing Config (%d)", i);
 
+        // 0,1,2,3. 4,5,6,7
+        // master_handle->init_models(
+        // i*8 + 4,
+        // i*8 + 5,
+        // i*8 + 2,
+        // i*8 + 7,
+        // true, final_report, final_report_size);
         master_handle->init_models(
-        i*6 + 3,
-        i*6 + 4,
-        i*6 + 2,
+        i*8 + 0,
+        i*8 + 1,
+        i*8 + 2,
+        i*8 + 3,
         true, final_report, final_report_size);
-        
+
         int win_count = 0;
         float current_mse;
         while(in_win < input_trial_len && out_win < output_trial_len)
-        {
+        {   
+            const int trial_len_samples = (int)input_trial_len;   // = max_input_size / 8, per-channel length
+            const int win_start_t        = win_count * input_win_len;   // start time of this window (samples)
+            
+            const int out_trial_len = (int)(MAIN_Y_SIZES[i] / CONFIG_OUTPUT_CHANNELS);
+            const int out_start_t   = win_count * output_win_len;   // same window counter as input
             ESP_LOGI("MAIN", "Win: %d", win_count);
             //memory copy from flash to sram arrays
-            memcpy(&input_trial[in_win * CONFIG_INPUT_CHANNELS],
-            &x_data[0][in_win * CONFIG_INPUT_CHANNELS * sizeof(float)], input_size * sizeof(float));
+            // memcpy(&input_trial[in_win * CONFIG_INPUT_CHANNELS],
+            // &x_data[0][in_win * CONFIG_INPUT_CHANNELS * sizeof(float)], input_size * sizeof(float));
+            // memcpy(&correct_trial[out_win * CONFIG_OUTPUT_CHANNELS], 
+            // &y_data[i][out_win * CONFIG_OUTPUT_CHANNELS * sizeof(float)], output_size * sizeof(float));
 
-            memcpy(&correct_trial[out_win * CONFIG_OUTPUT_CHANNELS], 
-            &y_data[i][out_win * CONFIG_OUTPUT_CHANNELS * sizeof(float)], output_size * sizeof(float));
-            
+            for (int ch = 0; ch < CONFIG_INPUT_CHANNELS; ch++) {
+                const float* src =
+                    (const float*)x_data[0] + (size_t)ch * trial_len_samples + win_start_t;
+                memcpy(&input_trial[ch * input_win_len],
+                    src,
+                    input_win_len * sizeof(float));
+            }
+
+            for (int ch = 0; ch < CONFIG_OUTPUT_CHANNELS; ch++) {
+                const float* src =
+                    (const float*)y_data[i] + (size_t)ch * out_trial_len + out_start_t;
+                memcpy(&correct_trial[ch * output_win_len],
+                    src,
+                    output_win_len * sizeof(float));
+            }
 
             final_report_size = strlen(final_report);
             snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Window %ld\nQuant Type: Float32\n", MAIN_WINDOW_LENS[i]);
         
             if(win_count == 1)
             {
-                master_handle->dual_inference(
-                &input_trial[in_win * CONFIG_INPUT_CHANNELS],
+                master_handle->dual_inference_float(
+                &input_trial[0],
                 input_size,
-                &output_trial[out_win * CONFIG_OUTPUT_CHANNELS],
+                &output_trial[0],
                 output_size,
                 second_input_ptr,
                 second_input_lengths,
                 intermediate_size, first_out_len,
                 &final_report[0], REPORT_MAX);
             }else{
-                master_handle->dual_inference(
-                &input_trial[in_win * CONFIG_INPUT_CHANNELS],
+                master_handle->dual_inference_float(
+                &input_trial[0],
                 input_size,
-                &output_trial[out_win * CONFIG_OUTPUT_CHANNELS],
+                &output_trial[0],
                 output_size,
                 second_input_ptr,
                 second_input_lengths,
@@ -225,14 +252,16 @@ void run_app()
             
             
             current_mse = master_handle->print_output(
-            &output_trial[out_win * CONFIG_OUTPUT_CHANNELS],
+            &output_trial[0],
             output_size, 
-            &correct_trial[out_win * CONFIG_OUTPUT_CHANNELS]);
+            &correct_trial[0]);
 
             accumulated_mse += current_mse;
             if(current_mse > max_mse)
                 max_mse = current_mse;
-
+               
+            printf("current mse: %0.4f\n", current_mse);
+            
             // UPDATE
             in_win +=  input_win_len;
             out_win += output_win_len;
@@ -506,44 +535,6 @@ void run_testing_benchmark()
     ESP_LOGI("FINAL REPORT", "%s", final_report);
 }
 
-void run_optimized()
-{
-    OptimizedNativeLSTM* lstm = new OptimizedNativeLSTM();
-
-    int x_features = 25;
-    int32_t x_zeropoint = 14;
-    float x_scale = 0.010052992030978203;
-
-
-    int h_features = 25;
-    const int8_t* x = new int8_t[x_features]{
-        56,  118,   86,  -82, -128,   91,   26,   21,   80,   94,  127,
-             8, -113,  -21,  -67,  113,   94,    6,  113,  -37,   94,  -55,
-            25,  -31,   86
-    };
-
-    int8_t* y = new int8_t[h_features * 4];
-    int32_t y_zeropoint = 8;
-    float y_scale = 0.021355733275413513;
-
-    lstm->set_x_h_weights_and_bias(&weights[0], nullptr,
-         x_features, weights_scale,
-          nullptr, &weights[0], nullptr,
-           h_features, weights_scale, nullptr);  
-    
-    lstm->calculate_per_ch_M(x_scale, y_scale);
-    uint64_t startTime_first = esp_timer_get_time();
-    lstm->run_inference(x, x_zeropoint, y, y_zeropoint);
-    uint64_t duration_first = esp_timer_get_time() - startTime_first;
-
-    ESP_LOGI("OPTIMIZED", "took  %lld \xCE\xBCs", duration_first);
-    // Print Y
-    // for(int i =0; i < h_features * 4; i++)
-    // {
-    //     ESP_LOGI("OPTIMIZED", "(%d)\n" ,y[i]);
-    // }
-
-}
 
 void test_lsl()
 {

@@ -5,46 +5,138 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include "lstm_nn_manifests/lstm_q.h"
+#define SIG_SCALE   (1.0f / 256.0f)
+#define SIG_ZP      (-128)
+#define TANH_SCALE  (1.0f / 128.0f)
+#define TANH_ZP     (0)
+
 class OptimizedNativeLSTM
 {
+    // x_hat = matmul(x_weights, x) + x_bias : fc(input_channels = x_features, output_channels = h_features * 4)
+    // h_hat = matmul(h_weights, h) + h_bias: fc(input_channels = h_features, ouput_channels = h_features * 4)
+    // all_gates = x_hat + h_hat
+    // slice all_gates into i,f,g,o
+    //if_gate = self.sig(gates[:, : 2 * self.hidden_size])
+    //i_gate = if_gate[:, : self.hidden_size]
+    //f_gate = if_gate[:, self.hidden_size : 2 * self.hidden_size]
+    // g = tanh(all_gates[2* h_features : 3 * h_features])
+    // o = sigmoid(all_gate[3 * h_features: 4 * h_features])
+    // c_new = f mult c + i mult g
+    // h_new = o mult tanh(c_new)
+    
 private:
     /* data */
-    int8_t* m_x_weights; // size = input_size * h_size * 4 for i,o,g,f gates
-    int32_t* m_x_bias;
-    int16_t m_x_features;
-    float* m_x_weight_scale;
-    float* m_x_bias_scale; 
 
-    int32_t* m_mults;
-    int32_t* m_shifts;
-    // 4 * hidden_size = 4 * m_h_features
+    //weights and biases
+    int8_t* m_x_l0_weights; // size = input_size * h_size * 4 for i,o,g,f gates
+    int32_t* m_x_l0_bias;
 
-    int8_t* m_h_weights; // size = h_size * h_size * 4 for i,o,g,f gates
-    int32_t* m_h_bias;
-    int16_t m_h_features;
-    float* m_h_weight_scale;
-    float* m_h_bias_scale; 
+    int8_t* m_h_l0_weights; // size = input_size * h_size * 4 for i,o,g,f gates
+    int32_t* m_h_l0_bias;
+
+    int8_t* m_x_l1_weights; // size = input_size * h_size * 4 for i,o,g,f gates
+    int32_t* m_x_l1_bias;
+
+    int8_t* m_h_l1_weights; // size = input_size * h_size * 4 for i,o,g,f gates
+    int32_t* m_h_l1_bias;
+
+    int x_features;
+    int h_features;
+
+    int8_t m_sig_lut[256];
+    int8_t m_tanh_lut[256];
+
+    struct EwParams {
+        // gates = x_hat + h_hat   (add: two inputs in different scales)
+        int32_t add_in1_mult, add_in1_shift;   // from s_xhat
+        int32_t add_in2_mult, add_in2_shift;   // from s_hhat
+        int32_t add_out_mult, add_out_shift;   // to s_gates
+        int32_t add_left_shift;
+ 
+        // c*f -> c_new scale
+        int32_t cf_mult, cf_shift;
+        // i*g -> c_new scale
+        int32_t ig_mult, ig_shift;
+        // (c*f)+(i*g) : both already in s_c_new -> identity-ish add to s_c_new
+        int32_t cnew_in1_mult, cnew_in1_shift;
+        int32_t cnew_in2_mult, cnew_in2_shift;
+        int32_t cnew_out_mult, cnew_out_shift;
+        int32_t cnew_left_shift;
+ 
+        // o * tanh(c_new) -> h_new scale
+        int32_t oh_mult, oh_shift;
+ 
+        // activation (gate input) scales/zps for the layer
+        float s_gates;  int32_t z_gates;
+        float s_c_new;  int32_t z_c_new;
+        float s_h_new;  int32_t z_h_new;
+    };
+
+    EwParams m_ew[2]; //for each layer
+
+    int H;
+    int G;
+
+    //activations buffers
+    int8_t* m_xhat;     // [G]
+    int8_t* m_hhat;     // [G]
+    int8_t* m_gates;    // [G]
+    int8_t* m_if;       // [2H] sigmoid(i,f)
+    int8_t* m_g;        // [H]  tanh(g)
+    int8_t* m_o;        // [H]  sigmoid(o)
+    int8_t* m_cf;       // [H]  c*f
+    int8_t* m_ig;       // [H]  i*g
+    int8_t* m_tanh_c;   // [H]  tanh(c_new)
 public:
-    OptimizedNativeLSTM();
 
-    void set_x_h_weights_and_bias(const int8_t* x_weights,
-                                const int32_t* x_bias,
-                                const uint16_t x_features,
-                                const float* x_weight_scale,
-                                const float* x_bias_scale,
+    static void quantize_multiplier(double M, int32_t *mult, int32_t *shift);
 
-                                const int8_t* h_weights,
-                                const int32_t* h_bias,
-                                const uint16_t h_features,
-                                const float* h_weight_scale,
-                                const float* h_bias_scale);
+    //preparing values for int + int element wise addition
+    void prepare_add(float s_in1, float s_in2, float s_out,
+        int32_t *m1,int32_t *s1,int32_t *m2,int32_t *s2,
+        int32_t *mo,int32_t *so,int32_t *left_shift);
+
     
-    void run_inference(
-        const int8_t* x,
-        const int32_t x_zeropoint,
-        int8_t* y,
-        const int32_t y_zeropoint);
+    // defualt initialization
+    OptimizedNativeLSTM()
+    :m_x_l0_weights(nullptr), m_x_l0_bias(nullptr),
+      m_h_l0_weights(nullptr), m_h_l0_bias(nullptr),
+      m_x_l1_weights(nullptr), m_x_l1_bias(nullptr),
+      m_h_l1_weights(nullptr), m_h_l1_bias(nullptr),
+      x_features(0), h_features(0),
+      m_xhat(nullptr), m_hhat(nullptr), m_gates(nullptr),
+      m_if(nullptr), m_g(nullptr), m_o(nullptr),
+      m_cf(nullptr), m_ig(nullptr), m_tanh_c(nullptr) {}
 
-    void calculate_per_ch_M(const float x_scale, const float y_scale);
-    ~OptimizedNativeLSTM();
+
+    void set_weights(
+        int xf, int hf,
+        int8_t* x0w,int32_t* x0b, int8_t* h0w,int32_t* h0b,
+        int8_t* x1w,int32_t* x1b, int8_t* h1w,int32_t* h1b
+    );
+
+    // Function to build all LUTs and all elementwise multiplier from header
+    void prepare();
+
+    // ESP-NN does not provide a default implementation for tanh activation
+    static void build_tanh_lut(int8_t *lut, int32_t in_zp, float in_scale);
+    
+    void run_cell_step(
+        int layer,
+        const int8_t* in_x, int row_len_x, int32_t xin_off,
+        const int8_t* in_h, int32_t hin_off, int32_t cin_off,
+        const int8_t* in_c,
+        int8_t* out_c, int8_t* out_h
+    );
+
+    void run_timestep_q(
+        const int8_t* x_q, int8_t* h_q, 
+        int8_t* c_q, int8_t* y_out
+    );
+    ~OptimizedNativeLSTM() {
+        free(m_xhat); free(m_hhat); free(m_gates);
+        free(m_if); free(m_g); free(m_o);
+        free(m_cf); free(m_ig); free(m_tanh_c);
+    }
 };

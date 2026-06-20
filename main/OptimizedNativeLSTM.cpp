@@ -1,159 +1,213 @@
-// ============================================================
-// tensor([[[  -5,  -92,  127,   31,  -54,   86,  -20,  -49, -128,   14,   44,
-//            -27,   25,  -78,   82,   62, -100,   88,  -25,   26,   80,   70,
-//             11,   83,   -8]]], dtype=torch.int8)
-// ============================================================
-// tensor([[[ -81,    9,   66,   94,    1,   -6,  -14,  -34,   32,   40,   57,
-//            -64,   84,  -32,   68, -119,   23,  -44,   65,  -65,   32,   38,
-//             58,  -73, -112]]], dtype=torch.int8)
-// ============================================================
-// tensor([[[  50,  -19,   55,   86,  -92,   84,  127,   58,   90,   67,   56,
-//             32,  -11,  -95, -118, -128, -116,   54,  -74,  127,  -99,   51,
-//            -87,  -11,   68]]], dtype=torch.int8)
-// ============================================================
-// tensor([[[ 0.0540,  0.0065, -0.0485,  0.4983, -0.5899,  0.2128,  0.3650,
-//            0.1405,  0.1955,  0.0371,  0.1967,  0.1156, -0.4262, -0.3160,
-//           -0.0788, -0.6411, -0.6167,  0.2650, -0.2469,  0.3399, -0.7626,
-//            0.1093, -0.1309, -0.0398,  0.3109]]], grad_fn=<StackBackward0>)
-// ============================================================
-// tensor([[[ 0.0540,  0.0065, -0.0485,  0.4983, -0.5899,  0.2128,  0.3650,
-//            0.1405,  0.1955,  0.0371,  0.1967,  0.1156, -0.4262, -0.3160,
-//           -0.0788, -0.6411, -0.6167,  0.2650, -0.2469,  0.3399, -0.7626,
-//            0.1093, -0.1309, -0.0398,  0.3109]]], grad_fn=<CopySlices>)
-// ============================================================
-// tensor([[[ 0.1874,  0.0110, -0.1107,  0.8707, -1.0227,  0.7805,  0.7290,
-//            0.3383,  0.6244,  0.2004,  0.2361,  0.1438, -0.8352, -1.1308,
-//           -0.4217, -0.8953, -1.4767,  0.6464, -0.7813,  0.5811, -1.3189,
-//            0.2125, -0.1998, -0.0793,  0.7818]]], grad_fn=<CopySlices>)
-
-
-
-// tensor([[[ 28,  57,  42, -37, -59,  44,  14,  11,  39,  46,  61,   5, -52,  -8,
-//           -30,  54,  46,   4,  55, -16,  46, -25,  13, -13,  42]]],
-//        dtype=torch.int8)
-// ============================================================
-// tensor([[[  -6,   41,  -74,   69,   -4,   33,   57,   54,  -76,   35,   96,
-//             26,   36,   21,   46,  -41,  -47,  -12,  -25,   46,  -15,  -41,
-//             40,   36,   16,   28,  127,    8,   59,  -29,  -32,   80,   85,
-//            -18,  -17,  -69,   55,   55,   59,  -12,  -39,  -61,   64,  -31,
-//           -128,   15,   38,   55,   52,  109,   94,  -44,  122,  -55,   40,
-//              5,  -64,  -31,    9,   24,  -15,   29,   20,  -29,   67,  -15,
-//              9,   51,   63,  -60,   28,  -52,   29,  -33,  -51,   61,   90,
-//             36,    4,   47,  -45,  -37,    1,   55,   32,  -17,   46,   24,
-//            -34,   19,   96,   -5,   25,  -71,   23,   22,  -59,  -91,   10,
-//            106]]], dtype=torch.int8)
-
 #include "OptimizedNativeLSTM.h"
-OptimizedNativeLSTM::OptimizedNativeLSTM(/* args */)
-{
 
+void OptimizedNativeLSTM::quantize_multiplier(double M, int32_t *mult, int32_t *shift)
+{
+    if (M == 0.0) { *mult = 0; *shift = 0; return; }
+    int exp;
+    double mant = frexp(M, &exp);          // M = mant * 2^exp, mant in [0.5,1)
+    int64_t q = (int64_t)llround(mant * (double)(1LL << 31));
+    if (q == (1LL << 31)) { q >>= 1; exp += 1; }
+    if (exp < -31) { *mult = 0; *shift = 0; return; }
+    *mult  = (int32_t)q;
+    *shift = exp;
 }
 
-OptimizedNativeLSTM::~OptimizedNativeLSTM()
+void OptimizedNativeLSTM::prepare_add(float s_in1, float s_in2, float s_out,
+                     int32_t *m1,int32_t *s1,int32_t *m2,int32_t *s2,
+                     int32_t *mo,int32_t *so,int32_t *left_shift)
 {
+    const int LS = 20;
+    double twice = (s_in1 > s_in2) ? s_in1 : s_in2;
+    double in1 = s_in1 / (twice * (double)(1 << LS));
+    double in2 = s_in2 / (twice * (double)(1 << LS));
+    double out = twice / s_out;
+    quantize_multiplier(in1, m1, s1);
+    quantize_multiplier(in2, m2, s2);
+    quantize_multiplier(out, mo, so);
+    *left_shift = LS;
 }
-
-void OptimizedNativeLSTM::set_x_h_weights_and_bias(  
-                                const int8_t* x_weights,
-                                const int32_t* x_bias,
-                                const uint16_t x_features,
-                                const float* x_weight_scale,
-                                const float* x_bias_scale,
-
-                                const int8_t* h_weights,
-                                const int32_t* h_bias,
-                                const uint16_t h_features,
-                                const float* h_weight_scale,
-                                const float* h_bias_scale)
+void OptimizedNativeLSTM::prepare()
 {
-    this->m_x_features = x_features;
-    this->m_h_features = h_features;
+    H = LSTM_Q_HIDDEN;
+    G = 4 * H;
 
-    //allocate the space for the weights and biases first
-    this->m_x_weights = new int8_t[this->m_x_features * this->m_h_features * 4];
-    this->m_h_weights = new int8_t[this->m_h_features * this->m_h_features * 4];
+    // build sigmoid LUT
+    esp_nn_logistic_s8_prepare(m_sig_lut, LSTM_Q_L0_GATES_ZP, LSTM_Q_L0_GATES_SCALE);
+    // build tanh LUT (OURS)
+    build_tanh_lut(m_tanh_lut, LSTM_Q_L0_GATES_ZP, LSTM_Q_L0_GATES_SCALE);
 
-    memcpy(this->m_x_weights, x_weights, this->m_x_features * this->m_h_features * 4);
-    memcpy(this->m_h_weights, h_weights, this->m_h_features * this->m_h_features * 4);
-
-    if(x_bias)
-    {
-        this->m_x_bias = new int32_t[this->m_h_features * 4];
-        memcpy(this->m_x_bias, x_bias, this->m_h_features * 4 * sizeof(int32_t));
-
-        this->m_x_bias_scale = new float[this->m_h_features * 4];
-        memcpy(this->m_x_bias_scale, x_bias_scale, this->m_h_features * 4 * sizeof(float));
-    }else { this->m_x_bias = nullptr; this->m_x_bias_scale = nullptr; }
+    // layer 0
+    // gates = x_hat + h_hat 
+    prepare_add(LSTM_Q_L0_X_HAT_SCALE, LSTM_Q_L0_H_HAT_SCALE, LSTM_Q_L0_GATES_SCALE,
+            &m_ew[0].add_in1_mult,  &m_ew[0].add_in1_shift,
+            &m_ew[0].add_in2_mult,  &m_ew[0].add_in2_shift,
+            &m_ew[0].add_out_mult,  &m_ew[0].add_out_shift,
+            &m_ew[0].add_left_shift);
     
-    if(h_bias)
-    {
-        this->m_h_bias = new int32_t[this->m_h_features * 4];
-        memcpy(this->m_h_bias, h_bias, this->m_h_features * 4 * sizeof(int32_t));
-
-        this->m_h_bias_scale = new float[this->m_h_features * 4];
-        memcpy(this->m_h_bias_scale, h_bias_scale, this->m_h_features * 4 * sizeof(float));
-    }else { this->m_h_bias = nullptr; this->m_h_bias_scale = nullptr; }
+    quantize_multiplier((double)LSTM_Q_L0_C_NEW_SCALE /* placeholder s_c */ * SIG_SCALE
+                            / LSTM_Q_L0_C_NEW_SCALE, &m_ew[0].cf_mult,&m_ew[0].cf_shift);
     
-    //allocate quantization params
-    this->m_x_weight_scale = new float[this->m_h_features * 4];
-    this->m_h_weight_scale = new float[this->m_h_features * 4];
+    quantize_multiplier((double)SIG_SCALE * TANH_SCALE / LSTM_Q_L0_C_NEW_SCALE,
+                        &m_ew[0].ig_mult,&m_ew[0].ig_shift);
 
-    memcpy(this->m_x_weight_scale, x_weight_scale, this->m_h_features * 4 * sizeof(float));
-    memcpy(this->m_h_weight_scale, h_weight_scale, this->m_h_features * 4 * sizeof(float));
+    
+    // c_new = cf +ig
+    prepare_add(LSTM_Q_L0_C_NEW_SCALE, LSTM_Q_L0_C_NEW_SCALE, LSTM_Q_L0_C_NEW_SCALE,
+            &m_ew[0].cnew_in1_mult,&m_ew[0].cnew_in1_shift,
+            &m_ew[0].cnew_in2_mult,&m_ew[0].cnew_in2_shift,
+            &m_ew[0].cnew_out_mult,&m_ew[0].cnew_out_shift,&m_ew[0].cnew_left_shift);
+    quantize_multiplier((double)SIG_SCALE * TANH_SCALE / LSTM_Q_L0_H_NEW_SCALE,
+                &m_ew[0].oh_mult,&m_ew[0].oh_shift);
+    m_ew[0].s_gates=LSTM_Q_L0_GATES_SCALE; m_ew[0].z_gates=LSTM_Q_L0_GATES_ZP;
+    m_ew[0].s_c_new=LSTM_Q_L0_C_NEW_SCALE; m_ew[0].z_c_new=LSTM_Q_L0_C_NEW_ZP;
+    m_ew[0].s_h_new=LSTM_Q_L0_H_NEW_SCALE; m_ew[0].z_h_new=LSTM_Q_L0_H_NEW_ZP;
+
+    // layer 1
+    prepare_add(LSTM_Q_L1_X_HAT_SCALE, LSTM_Q_L1_H_HAT_SCALE, LSTM_Q_L1_GATES_SCALE,
+            &m_ew[1].add_in1_mult,&m_ew[1].add_in1_shift,
+            &m_ew[1].add_in2_mult,&m_ew[1].add_in2_shift,
+            &m_ew[1].add_out_mult,&m_ew[1].add_out_shift,&m_ew[1].add_left_shift);
+    quantize_multiplier((double)LSTM_Q_L1_C_NEW_SCALE * SIG_SCALE / LSTM_Q_L1_C_NEW_SCALE,
+                        &m_ew[1].cf_mult,&m_ew[1].cf_shift);
+    quantize_multiplier((double)SIG_SCALE * TANH_SCALE / LSTM_Q_L1_C_NEW_SCALE,
+                        &m_ew[1].ig_mult,&m_ew[1].ig_shift);
+    prepare_add(LSTM_Q_L1_C_NEW_SCALE, LSTM_Q_L1_C_NEW_SCALE, LSTM_Q_L1_C_NEW_SCALE,
+        &m_ew[1].cnew_in1_mult,&m_ew[1].cnew_in1_shift,
+        &m_ew[1].cnew_in2_mult,&m_ew[1].cnew_in2_shift,
+        &m_ew[1].cnew_out_mult,&m_ew[1].cnew_out_shift,&m_ew[1].cnew_left_shift);
+    quantize_multiplier((double)SIG_SCALE * TANH_SCALE / LSTM_Q_L1_H_NEW_SCALE,
+                        &m_ew[1].oh_mult,&m_ew[1].oh_shift);
+    m_ew[1].s_gates=LSTM_Q_L1_GATES_SCALE; m_ew[1].z_gates=LSTM_Q_L1_GATES_ZP;
+    m_ew[1].s_c_new=LSTM_Q_L1_C_NEW_SCALE; m_ew[1].z_c_new=LSTM_Q_L1_C_NEW_ZP;
+    m_ew[1].s_h_new=LSTM_Q_L1_H_NEW_SCALE; m_ew[1].z_h_new=LSTM_Q_L1_H_NEW_ZP;
+
+    // initialize activation buffers
+    m_xhat=(int8_t*)malloc(G); m_hhat=(int8_t*)malloc(G); m_gates=(int8_t*)malloc(G);
+    m_if=(int8_t*)malloc(2*H); m_g=(int8_t*)malloc(H); m_o=(int8_t*)malloc(H);
+    m_cf=(int8_t*)malloc(H); m_ig=(int8_t*)malloc(H); m_tanh_c=(int8_t*)malloc(H);
 }
 
-void OptimizedNativeLSTM::calculate_per_ch_M(const float x_scale, const float y_scale)
+void OptimizedNativeLSTM::build_tanh_lut(int8_t *lut, int32_t in_zp, float in_scale)
 {
-    m_shifts = new int32_t[this->m_h_features * 4];
-    m_mults = new int32_t[this->m_h_features * 4];
-    for (size_t i = 0; i < this->m_h_features * 4; i++)
-        {
-            //printf("weight scale %0.4f\n", m_x_weight_scale[i]);
-            float M = (x_scale * m_x_weight_scale[i]) / y_scale;
-            m_shifts[i] = 0;
-            while (M < 0.5f)
-            { M *= 2; m_shifts[i]--; }
-            while (M >= 1.0f) 
-            { M *= 0.5f;m_shifts[i]++; }
-            // M in range between [0.5, 1.0[ 
-            // M * (2 ^ 31) range 0.5 * 2^31 - 2 ^ 31
-            int64_t q = (int64_t)(M * (float)(1LL << 31) + 0.5f);
-            if (q > INT32_MAX) q = INT32_MAX;
-
-            m_mults[i] = (int32_t)q;
-        }
+    for (int i = 0; i < 256; ++i) {
+        int8_t input_val = (int8_t)i;
+        float dq = (input_val - in_zp) * in_scale;
+        float t = tanhf(dq);
+        int32_t q = (int32_t)lroundf(t * 128.0f) + TANH_ZP;  // scale 1/128
+        if (q < -128) q = -128;
+        if (q > 127)  q = 127;
+        lut[i] = (int8_t)q;
+    }
 }
-void OptimizedNativeLSTM::run_inference(
-       const int8_t* x,
-        const int32_t x_zeropoint,
-        int8_t* y,
-        const int32_t y_zeropoint
-    )
-{
-    // x_hat = matmul(x_weights, x) + x_bias : fc(input_channels = x_features, output_channels = h_features * 4)
-    // h_hat = matmul(h_weights, h) + h_bias: fc(input_channels = h_features, ouput_channels = h_features * 4)
-    // all_gates = x_hat + h_hat
-    // slice all_gates into i,f,g,o
-    // i = sigmoid(all_gates[:h_features])
-    // f = sigmoid(all_gates[h_features: 2* h_features])
-    // g = tanh(all_gates[2* h_features ; 3 * h_features])
-    // o = sigmoid(all_gate[3 * h_features: 4 * h_features])
-    // c_new = f mult c + i mult g
-    // h_new = o mult tanh(c_new)
-    
-    //TESTING: x_hat = matmul(x_weights, x)
-    // x_weights = (x_features, 4 * h_features)
-    // x = (x_features)
 
-    //int8_t* x_gates = new int8_t[this->m_h_features * 4];
-    // uint64_t startTime_first = esp_timer_get_time();
+void OptimizedNativeLSTM::run_cell_step(
+    int layer,
+    const int8_t* in_x, int row_len_x, int32_t xin_off,
+    const int8_t* in_h, int32_t hin_off, int32_t cin_off,
+    const int8_t* in_c,
+    int8_t* out_c, int8_t* out_h
+)
+{
+    const EwParams& P = m_ew[layer];
+ 
+    int8_t  *xw,*hw; int32_t *xb,*hb;
+    const int32_t *x_mult,*x_shift,*h_mult,*h_shift;
+    int32_t x_in_off, x_out_off, h_in_off, h_out_off;
+
+
+    if (layer==0) {
+        xw=m_x_l0_weights; xb=m_x_l0_bias; hw=m_h_l0_weights; hb=m_h_l0_bias;
+        x_mult=lstm_q_L0_x_out_mult; x_shift=lstm_q_L0_x_out_shift;
+        h_mult=lstm_q_L0_h_out_mult; h_shift=lstm_q_L0_h_out_shift;
+        x_in_off=LSTM_Q_L0_X_INPUT_OFFSET; x_out_off=LSTM_Q_L0_X_OUT_OFFSET;
+        h_in_off=LSTM_Q_L0_H_INPUT_OFFSET; h_out_off=LSTM_Q_L0_H_OUT_OFFSET;
+    } else {
+        xw=m_x_l1_weights; xb=m_x_l1_bias; hw=m_h_l1_weights; hb=m_h_l1_bias;
+        x_mult=lstm_q_L1_x_out_mult; x_shift=lstm_q_L1_x_out_shift;
+        h_mult=lstm_q_L1_h_out_mult; h_shift=lstm_q_L1_h_out_shift;
+        x_in_off=LSTM_Q_L1_X_INPUT_OFFSET; x_out_off=LSTM_Q_L1_X_OUT_OFFSET;
+        h_in_off=LSTM_Q_L1_H_INPUT_OFFSET; h_out_off=LSTM_Q_L1_H_OUT_OFFSET;
+    }
+
+    // Calculate x_hat
     esp_nn_fully_connected_per_ch_s8(
-        x, x_zeropoint, this->m_x_features,
-        this->m_x_weights, 0, nullptr, y,
-        this->m_h_features * 4, y_zeropoint, m_shifts, m_mults,
-        -127, 127);
-    // uint64_t duration_first = esp_timer_get_time() - startTime_first;
-    
-    // printf("TIME FOR OP ONLY:  %lld \xCE\xBCs\n", duration_first);
+        in_x, x_in_off, (uint16_t)row_len_x, xw, /*filter_offset*/0,
+        xb, m_xhat, (uint16_t)G, x_out_off, x_shift, x_mult, -128, 127);
 
+    // Calculate h_hat
+    esp_nn_fully_connected_per_ch_s8(
+            in_h, h_in_off, (uint16_t)H, hw, 0,
+            hb, m_hhat, (uint16_t)G, h_out_off, h_shift, h_mult, -128, 127);
+
+    // Calculate gates
+    esp_nn_add_elementwise_s8(
+    m_xhat, m_hhat,
+    -x_out_off, -h_out_off,                       // re-center each input
+    P.add_in1_mult, P.add_in2_mult,
+    P.add_in1_shift, P.add_in2_shift,
+    P.add_left_shift,
+    m_gates, P.z_gates, P.add_out_mult, P.add_out_shift,
+    -128, 127, G);
+
+    // apply and slice gates
+    esp_nn_logistic_s8(m_gates,m_if, 2*H, m_sig_lut);   // i,f
+    // tanh(g): g is gates[2H:3H]
+    for (int k=0;k<H;k++) m_g[k]=m_tanh_lut[(uint8_t)m_gates[2*H+k]];
+    // sigmoid(o): gates[3H:4H]
+    for (int k=0;k<H;k++) m_o[k]=m_sig_lut[(uint8_t)m_gates[3*H+k]];
+
+    const int8_t* i_gate = m_if;            // [0:H]
+    const int8_t* f_gate = m_if + H;        // [H:2H]
+
+    // c * f
+    esp_nn_mul_elementwise_s8(
+        in_c, f_gate, cin_off, SIG_ZP,
+        m_cf, P.z_c_new, P.cf_mult, P.cf_shift, -128, 127, H);
+
+    // i * g
+    esp_nn_mul_elementwise_s8(
+            i_gate, m_g, SIG_ZP, TANH_ZP,
+            m_ig, P.z_c_new, P.ig_mult, P.ig_shift, -128, 127, H);
+
+    // c_new =. c * f + i*g
+
+    esp_nn_add_elementwise_s8(
+            m_cf, m_ig, -P.z_c_new, -P.z_c_new,
+            P.cnew_in1_mult, P.cnew_in2_mult,
+            P.cnew_in1_shift, P.cnew_in2_shift, P.cnew_left_shift,
+            out_c, P.z_c_new, P.cnew_out_mult, P.cnew_out_shift, -128, 127, H);
+    
+    // tanh(c_new)
+    for (int k=0;k<H;k++) m_tanh_c[k]=m_tanh_lut[(uint8_t)out_c[k]];
+
+    // h_new = o * tanh(c_new)
+    esp_nn_mul_elementwise_s8(
+            m_o, m_tanh_c, SIG_ZP, TANH_ZP,
+            out_h, P.z_h_new, P.oh_mult, P.oh_shift, -128, 127, H);
+}
+
+
+void OptimizedNativeLSTM::run_timestep_q(const int8_t* x_q, int8_t* h_q, int8_t* c_q, int8_t* y_out)
+{
+    // layer 0: input = external x
+    run_cell_step(0, x_q, x_features, LSTM_Q_L0_X_INPUT_OFFSET,
+                h_q + 0*H, LSTM_Q_L0_H_INPUT_OFFSET, LSTM_Q_IN_C_ZP,
+                c_q + 0*H, c_q + 0*H, h_q + 0*H);
+
+    // layer 1: input = h_new[0] (just written into h_q[0])
+    run_cell_step(1, h_q + 0*H, H, LSTM_Q_L1_X_INPUT_OFFSET,
+                h_q + 1*H, LSTM_Q_L1_H_INPUT_OFFSET, LSTM_Q_L1_C_NEW_ZP,
+                c_q + 1*H, c_q + 1*H, h_q + 1*H);
+
+    // output = top layer hidden
+    memcpy(y_out, h_q + 1*H, H);
+}
+void OptimizedNativeLSTM::set_weights(
+        int xf, int hf,
+        int8_t* x0w,int32_t* x0b, int8_t* h0w,int32_t* h0b,
+        int8_t* x1w,int32_t* x1b, int8_t* h1w,int32_t* h1b
+){
+    x_features=xf; h_features=hf;
+    m_x_l0_weights=x0w; m_x_l0_bias=x0b; m_h_l0_weights=h0w; m_h_l0_bias=h0b;
+    m_x_l1_weights=x1w; m_x_l1_bias=x1b; m_h_l1_weights=h1w; m_h_l1_bias=h1b;
 }

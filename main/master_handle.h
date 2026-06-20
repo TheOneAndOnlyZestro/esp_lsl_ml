@@ -15,7 +15,7 @@
 class MasterHandle {
     private:
         Model** m_model;
-        uint8_t* m_psram_model_ptr[3];
+        uint8_t* m_psram_model_ptr[4];
         ModelFlash* m_model_flash;
               
         uint32_t* input_sizes;
@@ -44,6 +44,9 @@ class MasterHandle {
         char* report_buffer, int size);
         void init_models(int model_1_index, int model_2_index,int model_3_index,
              bool usePSRAM, char* report_buffer, int size);
+        
+        void init_models(int model_1_index, int model_2_index,int model_3_index, int model_4_index,
+        bool usePSRAM, char* report_buffer, int size);
 
         float print_output(const float* output_window, int output_size, const float* correct_window);
         
@@ -56,6 +59,18 @@ class MasterHandle {
                             int intermediate_size, int first_out_len,
                             char* report_buffer, int size);
 
+        void dual_inference_4(const float* input_ptr, int input_size,
+                            float* output_ptr, int output_size,
+                            float* second_input_ptr, const int* second_input_lengths,
+                            int intermediate_size, int first_out_len,
+                            char* report_buffer, int size);
+        
+        void dual_inference_float(const float* input_ptr, int input_size,
+                            float* output_ptr, int output_size,
+                            float* second_input_ptr, const int* second_input_lengths,
+                            int intermediate_size, int first_out_len,
+                            char* report_buffer, int size);
+        void apply_elu_float(float* in, int n, float alpha);
         void build_elu_lut(float in_scale, int32_t in_zp,
                         float out_scale, int32_t out_zp, float alpha);
         // between blocks, over the whole tensor:
