@@ -77,7 +77,8 @@ void MasterHandle::init_models(int model_1_index, int model_2_index,int model_3_
     init_model(model_4_index, 3 ,report_buffer, size);
 
     // Build ELU LUTs
-    //build_elu_lut(m_model[0]->getInputScale())
+    build_elu_lut(m_model[0]->getOutputScale(0), m_model[0]->getOutputZeroPoint(0), 
+    m_model[1]->getInputScale(0), m_model[1]->getInputZeroPoint(0), 1.0);
 }
 
 
@@ -96,8 +97,8 @@ double MasterHandle::print_output(const float* output_window, int output_size, c
 
         // Show enough digits to actually see the residual: scientific notation
         // so small mismatches are never rounded away on screen.
-        // printf("(%d) out=% .6e  ref=% .6e  diff=% .3e\n",
-        //        j, output_window[j], correct_window[j], diff);
+        // printf("(%d) out=% .6lf  ref=% .6lf  diff=% .3lf\n",
+        //         j, output_window[j], correct_window[j], diff);
     }
     //printf("==============================\n");
 
@@ -191,6 +192,121 @@ void MasterHandle::apply_elu_lut_int_float(
     }
 }
 
+void MasterHandle::init_optim_lstm(const char* partition)
+{
+    this->m_optim_lstm = new OptimizedNativeLSTM();
+
+    // Allocate data for weights and biases (hidden == x_features == 56)
+    m_model_optim_data.m_x_l0_w = new int8_t [LSTM_Q_HIDDEN * LSTM_Q_HIDDEN * 4];
+    m_model_optim_data.m_x_l0_b = new int32_t[LSTM_Q_HIDDEN * 4];
+    m_model_optim_data.m_h_l0_w = new int8_t [LSTM_Q_HIDDEN * LSTM_Q_HIDDEN * 4];
+    m_model_optim_data.m_h_l0_b = new int32_t[LSTM_Q_HIDDEN * 4];
+    m_model_optim_data.m_x_l1_w = new int8_t [LSTM_Q_HIDDEN * LSTM_Q_HIDDEN * 4];
+    m_model_optim_data.m_x_l1_b = new int32_t[LSTM_Q_HIDDEN * 4];
+    m_model_optim_data.m_h_l1_w = new int8_t [LSTM_Q_HIDDEN * LSTM_Q_HIDDEN * 4];
+    m_model_optim_data.m_h_l1_b = new int32_t[LSTM_Q_HIDDEN * 4];
+
+    // Map the flash partition and get zero-copy pointers to each block.
+    bool ok = this->m_model_flash->allocatePointerOnFlashOptimLSTMWeightsBiases(
+        partition,
+        &m_model_optim_data_flash.m_x_l0_w,
+        &m_model_optim_data_flash.m_x_l0_b,
+        &m_model_optim_data_flash.m_h_l0_w,
+        &m_model_optim_data_flash.m_h_l0_b,
+        &m_model_optim_data_flash.m_x_l1_w,
+        &m_model_optim_data_flash.m_x_l1_b,
+        &m_model_optim_data_flash.m_h_l1_w,
+        &m_model_optim_data_flash.m_h_l1_b
+    );
+
+    if (!ok) {
+        ESP_LOGE("MASTERHandle", "Failed to map optim LSTM weights from flash");
+        return;
+    }
+
+    // Copy flash -> owned buffers. Lengths come from the header _COUNT macros
+    // (weights are int8 -> COUNT bytes; biases are int32 -> COUNT * 4 bytes).
+    memcpy(m_model_optim_data.m_x_l0_w, m_model_optim_data_flash.m_x_l0_w, LSTM_Q_L0_x_W_COUNT);
+    memcpy(m_model_optim_data.m_x_l0_b, m_model_optim_data_flash.m_x_l0_b, LSTM_Q_L0_x_B_COUNT * sizeof(int32_t));
+    memcpy(m_model_optim_data.m_h_l0_w, m_model_optim_data_flash.m_h_l0_w, LSTM_Q_L0_h_W_COUNT);
+    memcpy(m_model_optim_data.m_h_l0_b, m_model_optim_data_flash.m_h_l0_b, LSTM_Q_L0_h_B_COUNT * sizeof(int32_t));
+    memcpy(m_model_optim_data.m_x_l1_w, m_model_optim_data_flash.m_x_l1_w, LSTM_Q_L1_x_W_COUNT);
+    memcpy(m_model_optim_data.m_x_l1_b, m_model_optim_data_flash.m_x_l1_b, LSTM_Q_L1_x_B_COUNT * sizeof(int32_t));
+    memcpy(m_model_optim_data.m_h_l1_w, m_model_optim_data_flash.m_h_l1_w, LSTM_Q_L1_h_W_COUNT);
+    memcpy(m_model_optim_data.m_h_l1_b, m_model_optim_data_flash.m_h_l1_b, LSTM_Q_L1_h_B_COUNT * sizeof(int32_t));
+
+    // Hand the owned pointers to the LSTM (it only stores them; MasterHandle owns/frees).
+    m_optim_lstm->set_weights(
+        feature_ch, LSTM_Q_HIDDEN,
+        m_model_optim_data.m_x_l0_w, m_model_optim_data.m_x_l0_b,
+        m_model_optim_data.m_h_l0_w, m_model_optim_data.m_h_l0_b,
+        m_model_optim_data.m_x_l1_w, m_model_optim_data.m_x_l1_b,
+        m_model_optim_data.m_h_l1_w, m_model_optim_data.m_h_l1_b
+    );
+
+    // Build LUTs (sigmoid/tanh) and elementwise requant multipliers.
+    m_optim_lstm->prepare();
+
+    m_lstm_hq = new int8_t[2 * LSTM_Q_HIDDEN];
+    m_lstm_cq = new int8_t[2 * LSTM_Q_HIDDEN];
+
+    m_lstm_cq16 = new int16_t[2 * LSTM_Q_HIDDEN];
+    reset_optim_lstm_state();
+
+}
+void MasterHandle::reset_optim_lstm_state()
+{
+    // float h=0 -> int8 IN_H zero-point;  float c=0 -> int8 IN_C zero-point
+    for (int i = 0; i < 2 * LSTM_Q_HIDDEN; i++) {
+        m_lstm_hq[i] = (int8_t)LSTM_Q_IN_H_ZP;   // 7
+        m_lstm_cq[i] = (int8_t)LSTM_Q_IN_C_ZP;   // (c8 path zero-point)
+    }
+
+    if (m_lstm_cq16) {
+        // float c=0 -> int16 IN_C zero-point (-12336)
+        int16_t c0 = (int16_t)LSTM_Q_IN_C_ZP;
+        for (int i = 0; i < 2 * LSTM_Q_HIDDEN; i++) m_lstm_cq16[i] = c0;
+    }
+}
+void MasterHandle::clear_optim_lstm()
+{
+    delete m_optim_lstm;
+    m_optim_lstm = nullptr;
+
+    delete[] m_model_optim_data.m_x_l0_w;  m_model_optim_data.m_x_l0_w = nullptr;
+    delete[] m_model_optim_data.m_x_l0_b;  m_model_optim_data.m_x_l0_b = nullptr;
+    delete[] m_model_optim_data.m_h_l0_w;  m_model_optim_data.m_h_l0_w = nullptr;
+    delete[] m_model_optim_data.m_h_l0_b;  m_model_optim_data.m_h_l0_b = nullptr;
+    delete[] m_model_optim_data.m_x_l1_w;  m_model_optim_data.m_x_l1_w = nullptr;
+    delete[] m_model_optim_data.m_x_l1_b;  m_model_optim_data.m_x_l1_b = nullptr;
+    delete[] m_model_optim_data.m_h_l1_w;  m_model_optim_data.m_h_l1_w = nullptr;
+    delete[] m_model_optim_data.m_h_l1_b;  m_model_optim_data.m_h_l1_b = nullptr;
+
+    delete[] m_lstm_hq;   m_lstm_hq = nullptr;
+    delete[] m_lstm_cq;   m_lstm_cq = nullptr;
+    delete[] m_lstm_cq16; m_lstm_cq16 = nullptr;
+}
+
+
+uint64_t MasterHandle::optim_lstm_step(const float* x_slice_f32, int x_len,
+                                    float* y_out_f32, bool use_c16)
+{
+    const int H = LSTM_Q_HIDDEN;
+    int8_t x_q[LSTM_Q_HIDDEN];
+    for (int i = 0; i < x_len; i++) {
+        float q = roundf(x_slice_f32[i] / LSTM_Q_IN_X_SCALE) + LSTM_Q_IN_X_ZP;
+        x_q[i] = (q < -128.f) ? -128 : (q > 127.f) ? 127 : (int8_t)q;
+    }
+    int8_t y_q[LSTM_Q_HIDDEN];
+    uint64_t t0 = esp_timer_get_time();
+    if (use_c16) m_optim_lstm->run_timestep_q_c16(x_q, m_lstm_hq, m_lstm_cq16, y_q);
+    else         m_optim_lstm->run_timestep_q   (x_q, m_lstm_hq, m_lstm_cq,   y_q);
+    uint64_t elapsed = esp_timer_get_time() - t0;
+    for (int i = 0; i < H; i++)
+        y_out_f32[i] = ((int32_t)y_q[i] - LSTM_Q_L1_H_NEW_ZP) * LSTM_Q_L1_H_NEW_SCALE;
+    return elapsed;
+}
+
 
 void MasterHandle::apply_elu_float(float* in, int n, float alpha)
 {
@@ -199,9 +315,6 @@ void MasterHandle::apply_elu_float(float* in, int n, float alpha)
     }
 }
 
-// ============================================================
-// STAGE 1: First Block A
-// ============================================================
 
 // int8 variant: model emits int8, ELU is the int->float dequant path.
 void MasterHandle::stage1_first_a_int8(const float* input_ptr, int input_size,
@@ -224,18 +337,88 @@ void MasterHandle::stage1_first_a_int8(const float* input_ptr, int input_size,
     // ELU via int->float dequant path (alpha = 1.0), writing float result.
     float   first_a_scale = m_model[0]->getOutputScale(0);
     int32_t first_a_shift = m_model[0]->getOutputZeroPoint(0);
-
     uint64_t startTime_ELU_A = esp_timer_get_time();
     apply_elu_lut_int_float(first_output_ptr_a, first_a_out_size,
-                            first_a_scale, first_a_shift, 1.0, out_f32);
-
+                                first_a_scale, first_a_shift, 1.0, out_f32);
     wt->elua_us = esp_timer_get_time() - startTime_ELU_A;
 
     delete[] input_lengths_a;
     delete[] first_output_ptr_a;
     delete[] output_lengths_a;
+    
 }
 
+// ---- stage 1, int8 out (your version, kept) ----
+void MasterHandle::stage1_first_a_int8(const float* input_ptr, int input_size,
+                                       int8_t* out_int8, int first_a_out_size,
+                                       WindowStageTimes* wt)
+{
+    const int* input_lengths_a  = new const int[1]{ input_size };
+    const int* output_lengths_a = new const int[1]{ first_a_out_size };
+    bool success = m_model[0]->predict(input_ptr, input_lengths_a, out_int8, output_lengths_a);
+    // read profiler ticks BEFORE clearing
+    wt->infa_ticks = m_model[0]->getTotalTicks();
+    m_model[0]->getTotalProfileTimePerOp();
+    if (!success) {
+        ESP_LOGE("MASTERHandle", "First model inference failed");
+    }
+    m_model[0]->ClearProfiler();
+
+
+    // ELU on int8 in place. LUT maps model[0] output space -> model[1] input space.
+    uint64_t startTime_ELU_A = esp_timer_get_time();
+    apply_elu_lut(out_int8, first_a_out_size);
+    wt->elua_us = esp_timer_get_time() - startTime_ELU_A;
+
+    delete[] input_lengths_a;
+    delete[] output_lengths_a;
+}
+
+// ---- concat in int8 (model[1] input space): [ elu'd_A | quant(x) ] ----
+void MasterHandle::concat_with_input_int8(const int8_t* first_a_after_elu, int first_a_out_size,
+                                          const float* input_ptr, int input_size,
+                                          int8_t* concat_out)
+{
+    // first part: A's ELU output is already in model[1] input space
+    for (int i = 0; i < first_a_out_size; i++)
+        concat_out[i] = first_a_after_elu[i];
+
+    // tail: quantize original x into model[1] input space
+    const float   in_scale = m_model[1]->getInputScale(0);
+    const int32_t in_zp    = m_model[1]->getInputZeroPoint(0);
+    for (int i = 0; i < input_size; i++) {
+        const float q = roundf(input_ptr[i] / in_scale) + in_zp;
+        if      (q < -128.0f) concat_out[i + first_a_out_size] = -128;
+        else if (q >  127.0f) concat_out[i + first_a_out_size] =  127;
+        else                  concat_out[i + first_a_out_size] = (int8_t)q;
+    }
+}
+
+// ---- stage 2, int8 in -> float out ----
+void MasterHandle::stage2_first_b_int8_in(const int8_t* concat_in, int concat_in_size,
+                                          float* out_f32, int first_b_out_size,
+                                          WindowStageTimes* wt)
+{
+    const int* input_lengths_b  = new const int[1]{ concat_in_size };
+    const int* output_lengths_b = new const int[1]{ first_b_out_size };
+
+    bool success = m_model[1]->predict(concat_in, input_lengths_b, out_f32, output_lengths_b);
+
+    // read profiler ticks BEFORE clearing
+    wt->infb_ticks = m_model[1]->getTotalTicks();
+    if (!success) {
+        ESP_LOGE("MASTERHandle", "First model inference failed");
+    }
+    m_model[1]->ClearProfiler();
+
+    // ELU stays plain float (matches the float path); model[1] output is dequantized float
+    uint64_t startTime_ELU_B = esp_timer_get_time();
+    apply_elu_float(out_f32, first_b_out_size, 1.0);
+    wt->elub_us = esp_timer_get_time() - startTime_ELU_B;
+
+    delete[] input_lengths_b;
+    delete[] output_lengths_b;
+}
 // float32 variant: model emits float, ELU is the plain float in-place path.
 void MasterHandle::stage1_first_a_f32(const float* input_ptr, int input_size,
                                       float* out_f32, int first_a_out_size,
@@ -252,6 +435,7 @@ void MasterHandle::stage1_first_a_f32(const float* input_ptr, int input_size,
     if (!success) {
         ESP_LOGE("MASTERHandle", "First model inference failed");
     }
+    //m_model[0]->getTotalProfileTimePerOp();
     m_model[0]->ClearProfiler();
 
     // ELU plain float (alpha = 1.0). Copy into out_f32 then activate.
@@ -325,10 +509,11 @@ void MasterHandle::stage2_first_b_int8(const float* concat_in, int concat_in_siz
 
     float   first_b_scale = m_model[1]->getOutputScale(0);
     int32_t first_b_shift = m_model[1]->getOutputZeroPoint(0);
-
+    
     uint64_t startTime_ELU_B = esp_timer_get_time();
     apply_elu_lut_int_float(first_output_ptr_b, first_b_out_size,
                             first_b_scale, first_b_shift, 1.0, out_f32);
+
     wt->elub_us = esp_timer_get_time() - startTime_ELU_B;
 
     delete[] input_lengths_b;
@@ -375,82 +560,106 @@ bool MasterHandle::regressor_step_int8(float* lstm_out, const int* lstm_out_leng
 // ============================================================
 // Recurrent loop orchestrator (dtype-agnostic via member fn ptrs)
 //   - pushes per-step ticks (lstm/regressor) into the trial accumulator
+//   - use_optim_lstm: route LSTM through the native ESP-NN implementation
+//   - use_c16:        within the native path, use the int16 cell-state variant
 // ============================================================
 void MasterHandle::recurrent_loop(const float* first_b_out, int first_out_len,
                                   float* output_ptr, int out_len, int step,
                                   float* second_input_ptr, const int* second_input_lengths,
                                   int intermediate_size, int state_size,
                                   StepFn lstm_step, StepFn reg_step,
-                                  TrialStats* trial)
+                                  TrialStats* trial,
+                                  bool use_optim_lstm,
+                                  bool use_c16)
 {
     const int y_chunk    = CONFIG_OUTPUT_CHANNELS * step;
     const int lstm_chunk = feature_ch * step;
 
     float* intermediate_A_output_ptr = new float[lstm_chunk + 2 * state_size]{0};
     const int* intermediate_A_output_lengths = new const int[3]{
-            lstm_chunk,
-            state_size,
-            state_size
-        };
+            lstm_chunk, state_size, state_size };
     float* intermediate_output_ptr = new float[y_chunk * step]{0};
-    const int* intermediate_output_lengths = new const int[1]{
-        y_chunk * step
-    };
+    const int* intermediate_output_lengths = new const int[1]{ y_chunk * step };
 
     bool success = false;
 
-    //printf("Check Second Model Health: %d", m_model[2]->getInputType(0));
     for (int t = 0; t < out_len; t += step) {
 
         // x slice: channel-major (56, step) from first model's (56, T) output
-        for (int j = 0; j < feature_ch; j++) {
-            for (int s = 0; s < step; s++) {
+        for (int j = 0; j < feature_ch; j++)
+            for (int s = 0; s < step; s++)
                 second_input_ptr[j * step + s] = first_b_out[j * first_out_len + t + s];
+
+        if (use_optim_lstm) {
+            // ---- native ESP-NN LSTM path (step==1). h/c carried in m_lstm_hq/cq(16). ----
+            assert(step == 1);   // native export is step==1 only
+
+            // x slice is the first lstm_chunk (== H for step==1) of second_input_ptr.
+            // use_c16 selects the int16 cell-state variant inside optim_lstm_step.
+            uint64_t lstm_us = optim_lstm_step(second_input_ptr, lstm_chunk,
+                                               intermediate_A_output_ptr, use_c16);
+            success = true;
+
+            bool success_2 = (this->*reg_step)(intermediate_A_output_ptr, intermediate_A_output_lengths,
+                                               intermediate_output_ptr, intermediate_output_lengths);
+            int32_t reg_ticks = m_model[3]->getTotalTicks();
+
+            for (int j = 0; j < CONFIG_OUTPUT_CHANNELS; j++)
+                for (int s = 0; s < step; s++)
+                    output_ptr[j * out_len + t + s] = intermediate_output_ptr[j * step + s];
+
+            if (success && success_2) {
+                trial->add_lstm_native_step((double)lstm_us);   // native us
+                trial->add_reg_step(reg_ticks);
+                // note: trial->add_lstm_step(...) intentionally NOT called here,
+                // so lstm_step_ticks stays 0 for native runs
+            } else {
+                ESP_LOGE("MASTERHandle", "Second model inference failed @ time_step: %d", t);
             }
-        }
-        // carry h and c forward from the previous call (zeros on first call)
-        if (t > 0) {
-            for (int j = 0; j < state_size; j++) {
-                second_input_ptr[intermediate_size + j] =
-                    intermediate_A_output_ptr[lstm_chunk + j];                      // h
-                second_input_ptr[intermediate_size + state_size + j] =
-                    intermediate_A_output_ptr[lstm_chunk + state_size + j];         // c
-            }
-        }
+            m_model[3]->ClearProfiler();
 
-        // do the lstm prediction (selected dtype variant)
-        success = (this->*lstm_step)(second_input_ptr, second_input_lengths,
-                                     intermediate_A_output_ptr, intermediate_A_output_lengths);
-        int32_t lstm_ticks = m_model[2]->getTotalTicks();    // before ClearProfiler
-
-        // regressor head trims h/c internally and deals with the x part
-        bool success_2 = (this->*reg_step)(intermediate_A_output_ptr, intermediate_A_output_lengths,
-                                           intermediate_output_ptr, intermediate_output_lengths);
-        int32_t reg_ticks = m_model[3]->getTotalTicks();     // before ClearProfiler
-
-        // scatter y chunk into the final channel-major output buffer
-        for (int j = 0; j < CONFIG_OUTPUT_CHANNELS; j++) {
-            for (int s = 0; s < step; s++) {
-                output_ptr[j * out_len + t + s] = intermediate_output_ptr[j * step + s];
-            }
-        }
-
-        if (success && success_2) {
-            trial->add_lstm_step(lstm_ticks);
-            trial->add_reg_step(reg_ticks);
         } else {
-            ESP_LOGE("MASTERHandle", "Second model inference failed @ time_step: %d", t);
-        }
+            // ---- original tflite LSTM path (unchanged) ----
+            if (t > 0) {
+                for (int j = 0; j < state_size; j++) {
+                    second_input_ptr[intermediate_size + j] =
+                        intermediate_A_output_ptr[lstm_chunk + j];                      // h
+                    second_input_ptr[intermediate_size + state_size + j] =
+                        intermediate_A_output_ptr[lstm_chunk + state_size + j];         // c
+                }
+            }
 
-        m_model[2]->ClearProfiler();
-        m_model[3]->ClearProfiler();
+            success = (this->*lstm_step)(second_input_ptr, second_input_lengths,
+                                         intermediate_A_output_ptr, intermediate_A_output_lengths);
+            int32_t lstm_ticks = m_model[2]->getTotalTicks();
+
+            bool success_2 = (this->*reg_step)(intermediate_A_output_ptr, intermediate_A_output_lengths,
+                                               intermediate_output_ptr, intermediate_output_lengths);
+            int32_t reg_ticks = m_model[3]->getTotalTicks();
+
+            for (int j = 0; j < CONFIG_OUTPUT_CHANNELS; j++)
+                for (int s = 0; s < step; s++)
+                    output_ptr[j * out_len + t + s] = intermediate_output_ptr[j * step + s];
+
+            if (success && success_2) {
+                trial->add_lstm_step(lstm_ticks);
+                trial->add_reg_step(reg_ticks);
+            } else {
+                ESP_LOGE("MASTERHandle", "Second model inference failed @ time_step: %d", t);
+            }
+            m_model[2]->ClearProfiler();
+            m_model[3]->ClearProfiler();
+        }
     }
 
-    for (int j = 0; j < state_size; j++) {
-        second_input_ptr[intermediate_size + j] =
-            intermediate_A_output_ptr[lstm_chunk + j];                      // h
-        second_input_ptr[intermediate_size + state_size + j] =
-            intermediate_A_output_ptr[lstm_chunk + state_size + j];         // c
+    // post-loop state stash (only meaningful for tflite path; harmless otherwise)
+    if (!use_optim_lstm) {
+        for (int j = 0; j < state_size; j++) {
+            second_input_ptr[intermediate_size + j] =
+                intermediate_A_output_ptr[lstm_chunk + j];
+            second_input_ptr[intermediate_size + state_size + j] =
+                intermediate_A_output_ptr[lstm_chunk + state_size + j];
+        }
     }
 
     delete[] intermediate_A_output_ptr;
@@ -492,415 +701,58 @@ void MasterHandle::dual_inference(const QuantConfig& qc,
 
     uint64_t win_start = esp_timer_get_time();
 
-    // STAGE 1: First Block A (+ ELU) -> float result. Variant chosen by qc.first_a.
-    //          fills wt->infa_ticks, wt->elua_us
-    float* first_a_after_elu = new float[first_a_out_size];
-    (this->*(qc.first_a))(input_ptr, input_size,
-                          first_a_after_elu, first_a_out_size, wt);
-
-    // CONCAT with original input
-    float* concat_first_output_ptr_a = new float[concat_first_a_out_size];
-    concat_with_input(first_a_after_elu, first_a_out_size,
-                      input_ptr, input_size, concat_first_output_ptr_a);
-
-    // STAGE 2: First Block B (+ ELU) -> float result. Variant chosen by qc.first_b.
-    //          fills wt->infb_ticks, wt->elub_us
     float* first_output_ptr_b = new float[first_b_out_size];
-    (this->*(qc.first_b))(concat_first_output_ptr_a, concat_first_a_out_size,
-                          first_output_ptr_b, first_b_out_size, wt);
+
+    if (qc.first_a_is_int8) {
+        // -------- int8-first workflow: concat happens in model[1] input space --------
+        // STAGE 1: model[0] emits int8 (already ELU'd into model[1] input space)
+        int8_t* first_a_after_elu = new int8_t[first_a_out_size];
+        stage1_first_a_int8(input_ptr, input_size,
+                            first_a_after_elu, first_a_out_size, wt);
+
+        // CONCAT in int8: [ elu'd_A | quant(x) into model[1] input space ]
+        int8_t* concat_int8 = new int8_t[concat_first_a_out_size];
+        concat_with_input_int8(first_a_after_elu, first_a_out_size,
+                               input_ptr, input_size, concat_int8);
+
+        // STAGE 2: model[1] int8 in -> float out (+ ELU float)
+        stage2_first_b_int8_in(concat_int8, concat_first_a_out_size,
+                               first_output_ptr_b, first_b_out_size, wt);
+
+        delete[] first_a_after_elu;
+        delete[] concat_int8;
+    } else {
+        // -------- original float workflow (unchanged) --------
+        // STAGE 1: First Block A (+ ELU) -> float result. Variant chosen by qc.first_a.
+        float* first_a_after_elu = new float[first_a_out_size];
+        (this->*(qc.first_a))(input_ptr, input_size,
+                              first_a_after_elu, first_a_out_size, wt);
+
+        // CONCAT with original input
+        float* concat_first_output_ptr_a = new float[concat_first_a_out_size];
+        concat_with_input(first_a_after_elu, first_a_out_size,
+                          input_ptr, input_size, concat_first_output_ptr_a);
+
+        // STAGE 2: First Block B (+ ELU) -> float result. Variant chosen by qc.first_b.
+        (this->*(qc.first_b))(concat_first_output_ptr_a, concat_first_a_out_size,
+                              first_output_ptr_b, first_b_out_size, wt);
+
+        delete[] first_a_after_elu;
+        delete[] concat_first_output_ptr_a;
+    }
 
     // STAGE 3+4: LSTM + Regressor loop. Variants chosen by qc.lstm_step / qc.reg_step.
+    //            use_optim_lstm routes to native LSTM; use_c16 selects int16 cell state.
     //            pushes per-step ticks into trial
     recurrent_loop(first_output_ptr_b, first_out_len,
                    output_ptr, out_len, step,
                    second_input_ptr, second_input_lengths,
                    intermediate_size, state_size,
-                   qc.lstm_step, qc.reg_step, trial);
+                   qc.lstm_step, qc.reg_step, trial,
+                   qc.use_optim_lstm, qc.use_c16);
 
     wt->window_us = esp_timer_get_time() - win_start;
 
-    delete[] first_a_after_elu;
-    delete[] concat_first_output_ptr_a;
     delete[] first_output_ptr_b;
     //ESP_LOGI("MASTERHandle", "CLEARED ALL ARRAYS");
 }
-// void MasterHandle::dual_inference(const float* input_ptr, int input_size,
-//                                   float* output_ptr, int output_size,
-//                                   float* second_input_ptr, const int* second_input_lengths,
-//                                   int intermediate_size, int first_out_len,
-//                                   char* report_buffer, int size)
-// {
-//     assert(m_model[0] != nullptr); // first a model
-//     assert(m_model[1] != nullptr); // first b model
-//     assert(m_model[2] != nullptr); // lstm
-//     assert(m_model[3] != nullptr); // regressor
- 
-//     const int state_size       = 2 * feature_ch;             // (2, 1, 56) flattened
-//     const int step             = intermediate_size / feature_ch;
-//     const int out_len          = output_size / CONFIG_OUTPUT_CHANNELS;   // T_eff
-//     const int in_len           = input_size / CONFIG_INPUT_CHANNELS;
- 
-//     const int first_a_out_size        = 48 * in_len;          // 48 * window_len, before CONCAT
-//     const int concat_first_a_out_size = feature_ch * in_len;
-//     const int first_b_out_size        = feature_ch * first_out_len;       // 56 * T
- 
-//     assert(step >= 1 && intermediate_size % feature_ch == 0);
-//     assert(output_size % CONFIG_OUTPUT_CHANNELS == 0);
-//     assert(out_len % step == 0);
-//     assert(out_len <= first_out_len);
-//     assert(first_out_len - out_len < step);
- 
-//     // ---- timing wrappers around stages, to reproduce the grand-total line ----
-//     uint64_t t0, t1;
- 
-//     // STAGE 1: First Block A  (+ ELU)  -> float result
-//     float* first_a_after_elu = new float[first_a_out_size];
-//     t0 = esp_timer_get_time();
-//     // >>> SWAP THIS LINE to flip model[0] between int8 / float32 <<<
-//     stage1_first_a_int8(input_ptr, input_size, first_a_after_elu, first_a_out_size,
-//                         report_buffer, size);
-//     t1 = esp_timer_get_time();
-//     uint64_t duration_first_a = t1 - t0;
- 
-//     // CONCAT with original input
-//     float* concat_first_output_ptr_a = new float[concat_first_a_out_size];
-//     concat_with_input(first_a_after_elu, first_a_out_size,
-//                       input_ptr, input_size, concat_first_output_ptr_a);
- 
-//     // STAGE 2: First Block B  (+ ELU)  -> float result
-//     float* first_output_ptr_b = new float[first_b_out_size];
-//     t0 = esp_timer_get_time();
-//     // >>> SWAP THIS LINE to flip model[1] between int8 / float32 <<<
-//     stage2_first_b_int8(concat_first_output_ptr_a, concat_first_a_out_size,
-//                        first_output_ptr_b, first_b_out_size,
-//                        report_buffer, size);
-//     t1 = esp_timer_get_time();
-//     uint64_t duration_first_b = t1 - t0;
- 
-//     // STAGE 3+4: LSTM + Regressor loop
-//     t0 = esp_timer_get_time();
-//     // >>> SWAP THESE to flip model[2] / model[3] between int8 / float32 <<<
-//     recurrent_loop(first_output_ptr_b, first_out_len,
-//                    output_ptr, out_len, step,
-//                    second_input_ptr, second_input_lengths,
-//                    intermediate_size, state_size,
-//                    &MasterHandle::lstm_step_f32,
-//                    &MasterHandle::regressor_step_int8,
-//                    report_buffer, size);
-//     t1 = esp_timer_get_time();
-//     uint64_t duration_second = t1 - t0;
- 
-//     // Grand total line (same as before: second + first_a + first_b)
-//     if (report_buffer != nullptr) {
-//         uint64_t total = duration_second + duration_first_a + duration_first_b;
-//         float durationInMs = total / 1000;
-//         int report_size = strlen(report_buffer);
-//         snprintf(report_buffer + report_size, size - report_size,
-//                  "Model Inf: %lld \xCE\xBCs, %0.2f ms\n", total, durationInMs);
-//     }
- 
-//     delete[] first_a_after_elu;
-//     delete[] concat_first_output_ptr_a;
-//     delete[] first_output_ptr_b;
-//     ESP_LOGI("MASTERHandle", "CLEARED ALL ARRAYS");
-
-// }
-// void MasterHandle::dual_inference(const float* input_ptr, int input_size,
-//                                   float* output_ptr, int output_size,
-//                                   float* second_input_ptr, const int* second_input_lengths,
-//                                   int intermediate_size, int first_out_len,
-//                                   char* report_buffer, int size)
-// {
-
-//     int report_size = 0;
-//     assert(m_model[0] != nullptr); // Ensure the first a model is initialized
-//     assert(m_model[1] != nullptr); // Ensure the first b model is initialized
-//     assert(m_model[2] != nullptr); // Ensure the second model is initialized
-
-
-//     const int state_size       = 2 * feature_ch;             // (2, 1, 56) flattened
-//     const int step             = intermediate_size / feature_ch;
-//     const int out_len          = output_size / CONFIG_OUTPUT_CHANNELS;   // T_eff
-//     const int in_len           = input_size / CONFIG_INPUT_CHANNELS;
-    
-//     const int first_a_out_size = 48 * in_len;          // 48 * window_len (48, 50) Before CONCAT
-//     const int concat_first_a_out_size = feature_ch * in_len;
-//     const int first_b_out_size = feature_ch * first_out_len;          // 56 * T
-
-//     assert(step >= 1 && intermediate_size % feature_ch == 0);
-//     assert(output_size % CONFIG_OUTPUT_CHANNELS == 0);
-//     assert(out_len % step == 0);              // second model runs out_len/step times
-//     assert(out_len <= first_out_len);         // T_eff = (T/step)*step <= T
-//     assert(first_out_len - out_len < step);   // only a ragged tail may be skipped
- 
-//     // ESP_LOGI("MASTERHandle", "dual_inference: in=%d, out=%d, inter=%d (step=%d, out_len=%d, T=%d)",
-//     //          input_size, output_size, intermediate_size, step, out_len, first_out_len);
-    
-//     uint64_t startTime_first_a = esp_timer_get_time();
- 
-//     const int* input_lengths_a = new const int[1]{ input_size }; // 8 * win_len
-    
-//     //float* first_output_ptr_a = new float[first_a_out_size]; 
-//     int8_t* first_output_ptr_a = new int8_t[first_a_out_size]; 
-//     const int* output_lengths_a = new const int[1]{ first_a_out_size };
-    
-//     bool success = m_model[0]->predict(input_ptr, input_lengths_a, first_output_ptr_a, output_lengths_a);
-    
-
-//     // for(int i =0; i < input_size; i++)
-//     // {
-//     //     printf("firstA input(%d): %0.4f\n", i, input_ptr[i]);
-//     // }
-//     uint64_t duration_first_a = esp_timer_get_time() - startTime_first_a;
-
-//     if (success) {
-//         float durationInMs = duration_first_a / 1000;
-//         // ESP_LOGI("MASTERHandle", "Inference For First A Model took: %lld micro seconds, %0.4f ms",
-//         //     duration_first_a, durationInMs);
-            
-        
-//         if(report_buffer != nullptr)
-//         {
-//             report_size = strlen(report_buffer);
-//             snprintf(report_buffer + report_size, size - report_size,
-//                  "0_Model Infa: %lld \xCE\xBCs, %0.2f ms\n", duration_first_a, durationInMs);
-//         }
-        
-//     } else {
-//         ESP_LOGE("MASTERHandle", "First model inference failed");
-//     }
-//     //m_model[0]->getTotalProfileTimePerOp();
-//     m_model[0]->ClearProfiler();
-
-//     // Do the ELU LUT layer In-Place
-//     float first_a_scale = m_model[0]->getOutputScale(0);
-//     int32_t first_a_shift = m_model[0]->getOutputZeroPoint(0);
-//     float* first_output_ptr_a_after_elu = new float[first_a_out_size];
-    
-//     // Do the ELU LUT layer In-Place, We are trying an int8 first conv this time only
-//     uint64_t startTime_ELU_A = esp_timer_get_time();
-//     apply_elu_lut_int_float(first_output_ptr_a, first_a_out_size,
-//     first_a_scale, first_a_shift, 1.0, first_output_ptr_a_after_elu);
-//     uint64_t duration_ELU_A = esp_timer_get_time() - startTime_ELU_A;
-
-//     // uint64_t startTime_ELU_A = esp_timer_get_time();
-//     // apply_elu_float(first_output_ptr_a, first_a_out_size, 1.0);
-//     // uint64_t duration_ELU_A = esp_timer_get_time() - startTime_ELU_A;
-
-//     // DO CONCATENATION WITH ORIGINAL X
-//     float* concat_first_output_ptr_a = new float[concat_first_a_out_size];
-//     for(int i =0; i < first_a_out_size; i++)
-//     {
-//         // CONCAT the output of First_BlockA
-//         concat_first_output_ptr_a[i] = first_output_ptr_a_after_elu[i];
-//     }
-
-//     for(int i =0; i < input_size; i++)
-//     {
-//         // CONCAT the output of First_BlockA
-//         concat_first_output_ptr_a[i + first_a_out_size] = input_ptr[i];
-//     }
-
-//     if(report_buffer != nullptr)
-//     {
-//         report_size = strlen(report_buffer);
-//         float durationInMs = duration_ELU_A / 1000;
-//         // ESP_LOGI("MASTERHandle", "Inference For first ELU took: %lld micro seconds, %0.4f ms",
-//         //     duration_ELU_A, durationInMs);
-//         snprintf(report_buffer + report_size, size - report_size,
-//                 "0_Model InfELUa: %lld \xCE\xBCs, %0.2f ms\n", duration_ELU_A, durationInMs);
-//     }
-        
-//     uint64_t startTime_first_b = esp_timer_get_time();
- 
-//     const int* input_lengths_b = new const int[1]{ concat_first_a_out_size };
-    
-//     float* first_output_ptr_b = new float[first_b_out_size];
-//     const int* output_lengths_b = new const int[1]{ first_b_out_size };
- 
-//     success = m_model[1]->predict(concat_first_output_ptr_a, input_lengths_b, first_output_ptr_b, output_lengths_b);
- 
-//     uint64_t duration_first_b = esp_timer_get_time() - startTime_first_b;
-    
-//     if (success) {
-//         float durationInMs = duration_first_b / 1000;
-//         // ESP_LOGI("MASTERHandle", "Inference For First B Model took: %lld micro seconds, %0.4f ms",
-//         //     duration_first_b, durationInMs);
-            
-        
-//         if(report_buffer != nullptr)
-//         {
-//             report_size = strlen(report_buffer);
-//             snprintf(report_buffer + report_size, size - report_size,
-//                  "0_Model Infb: %lld \xCE\xBCs, %0.2f ms\n", duration_first_b, durationInMs);
-//         }
-        
-//     } else {
-//         ESP_LOGE("MASTERHandle", "First model inference failed");
-//     }
-
-//     //m_model[1]->getTotalProfileTimePerOp();
-//     m_model[1]->ClearProfiler();
-    
-//     // Do the ELU LUT layer In-Place
-//     uint64_t startTime_ELU_B = esp_timer_get_time();
-
-//     apply_elu_float(first_output_ptr_b, first_b_out_size, 1.0);
-
-//     uint64_t duration_ELU_B = esp_timer_get_time() - startTime_ELU_B;
-
-//     if(report_buffer != nullptr)
-//     {
-//         report_size = strlen(report_buffer);
-//         float durationInMs = duration_ELU_B / 1000;
-
-//         // ESP_LOGI("MASTERHandle", "Inference For second ELU took: %lld micro seconds, %0.4f ms",
-//         //     duration_ELU_B, durationInMs);
-
-//         snprintf(report_buffer + report_size, size - report_size,
-//                 "0_Model InfELUb: %lld \xCE\xBCs, %0.2f ms\n", duration_ELU_B, durationInMs);
-
-//     }
-
-//     // Second Model A: takes in 3 inputs, emits 3 outputs (x,h,c)
-//     // Second Model B: takes in 1 input, emit 1 output x -> y
-//     // We need to carry over the h,c data
-//     uint64_t startTime_second = esp_timer_get_time();   
- 
-//     // Outputs: [ y (out_ch*step) | h (2*56) | c (2*56) ]
-
-//     float* intermediate_input_ptr = new float[intermediate_size + 2 * state_size]{0};
-
-    
-//     const int y_chunk = CONFIG_OUTPUT_CHANNELS * step;
-//     const int lstm_chunk = feature_ch * step;
-
-//     float* intermediate_A_output_ptr = new float[lstm_chunk + 2 * state_size]{0};
-//     const int* intermediate_A_output_lengths = new const int[3]{
-//             lstm_chunk,
-//             state_size,
-//             state_size
-//         };
-//     float* intermediate_output_ptr = new float[y_chunk * step]{0};
-//     const int* intermediate_output_lengths = new const int[1]{
-//         y_chunk * step
-//     };
-
-//     bool reported_single_step = false;
- 
-//     printf("Check Second Model Health: %d", m_model[2]->getInputType(0));
-//     for (int t = 0; t < out_len; t += step) {
-//         uint64_t intermediateTime_second = esp_timer_get_time();
- 
-//         // x slice: channel-major (56, step) taken from first model's
-//         // channel-major (56, T) output -- stride by T, walk only T_eff
-//         for (int j = 0; j < feature_ch; j++) {
-//             for (int s = 0; s < step; s++) {
-//                 second_input_ptr[j * step + s] = first_output_ptr_b[j * first_out_len + t + s];
-//             }
-//         }
-//         // for (int j =0; j < second_input_lengths[0]; j++)
-//         // {
-//         //     printf("second_input_ptr(%d)[%0.4f]\n", j, second_input_ptr[j]);
-//         // }
-//         // carry h and c forward from the previous call (zeros on first call)
-//         if (t > 0) {
-//             for (int j = 0; j < state_size; j++) {
-//                 second_input_ptr[intermediate_size + j] =
-//                     intermediate_A_output_ptr[lstm_chunk + j];                      // h
-//                 second_input_ptr[intermediate_size + state_size + j] =
-//                     intermediate_A_output_ptr[lstm_chunk + state_size + j];         // c
-//             }
-//         }
-        
-//         // do the lstm prediction
-//         success = m_model[2]->predict(second_input_ptr, second_input_lengths,
-//                                       intermediate_A_output_ptr, intermediate_A_output_lengths);
-
-//         // for (int j =0; j <  intermediate_A_output_lengths[0]; j++)
-//         // {
-//         //     printf("intermediate_A_output_ptr(%d)[%0.4f]\n", j, intermediate_A_output_ptr[j]);
-//         // }
-//         // the model predict code will already trim the h and c parts and only deal with the first part containing x
-//         bool success_2 = m_model[3]->predict(intermediate_A_output_ptr, intermediate_A_output_lengths,
-//             intermediate_output_ptr, intermediate_output_lengths);
-
-//         // for (int j =0; j <  intermediate_output_lengths[0]; j++)
-//         // {
-//         //     printf("intermediate_output_ptr(%d)[%0.4f]\n", j, intermediate_output_ptr[j]);
-//         // }
-//         // scatter y chunk into the final channel-major output buffer
-//         for (int j = 0; j < CONFIG_OUTPUT_CHANNELS; j++) {
-//             for (int s = 0; s < step; s++) {
-//                 output_ptr[j * out_len + t + s] = intermediate_output_ptr[j * step + s];
-//                 //printf("FIRST DUAL (%d)[%0.4f]\n", j, intermediate_output_ptr[j * step + s]);
-//             }
-//         }
- 
-//         uint64_t duration_intermediate = esp_timer_get_time() - intermediateTime_second;
-//         if (success && success_2) {
-//             // report the per-call latency once, using the 2nd call (steady state)
-//             if (report_buffer != nullptr && t > 0 && !reported_single_step) {
-//                 float durationInMs = duration_intermediate / 1000;
-//                 report_size = strlen(report_buffer);
-//                 snprintf(report_buffer + report_size, size - report_size,
-//                          "1_Model tInf: %lld \xCE\xBCs, %0.2f ms\n",
-//                          duration_intermediate, durationInMs);
-//                 reported_single_step = true;
-//             }
-//         } else {
-//             ESP_LOGE("MASTERHandle", "Second model inference failed @ time_step: %d", t);
-//         }
-        
-//         if(t==1)
-//         {
-//             //m_model[2]->getTotalProfileTimePerOp();
-//         }
-//         m_model[2]->ClearProfiler();
-//         m_model[3]->ClearProfiler();
-//     }
-    
-//     for (int j = 0; j < state_size; j++) {
-//         second_input_ptr[intermediate_size + j] =
-//             intermediate_A_output_ptr[lstm_chunk + j];                      // h
-//         second_input_ptr[intermediate_size + state_size + j] =
-//             intermediate_A_output_ptr[lstm_chunk + state_size + j];         // c
-//     }
-//     uint64_t duration_second = esp_timer_get_time() - startTime_second;
- 
-//     if (success) {
-//         if(report_buffer != nullptr)
-//         {
-//             float durationInMs = duration_second / 1000;
-//             report_size = strlen(report_buffer);
-//             snprintf(report_buffer + report_size, size - report_size,
-//                  "1_Model Inf: %lld \xCE\xBCs, %0.2f ms\n", duration_second, durationInMs);
-//         }
-        
-//     } else {
-//         ESP_LOGE("MASTERHandle", "Second model inference failed");
-//     }
- 
-//     if(report_buffer != nullptr)
-//     {
-//         float durationInMs = (duration_second + duration_first_a + duration_first_b) / 1000;
-//         report_size = strlen(report_buffer);
-//         snprintf(report_buffer + report_size, size - report_size,
-//              "Model Inf: %lld \xCE\xBCs, %0.2f ms\n",
-//              duration_second + duration_first_a + duration_first_b, durationInMs);
-//     }
-    
-
-//     delete[] input_lengths_a;
-//     delete[] first_output_ptr_a;
-//     delete[] output_lengths_a;
-
-//     delete[] input_lengths_b;
-//     delete[] first_output_ptr_b;
-//     delete[] output_lengths_b;
-
-//     delete[] intermediate_output_ptr;
-//     delete[] intermediate_output_lengths;
-//     delete[] concat_first_output_ptr_a;
-//     ESP_LOGI("MASTERHandle", "CLEARED ALL ARRAYS");
-// }

@@ -14,12 +14,34 @@
 #include "driver/uart.h"
 
 #include "MicroInterface/Model.h"
-
+#include "OptimizedNativeLSTM.h"
 #include "lsl_handle.h"
 
 #include "trial_report.h"   // AvgMax, WindowStageTimes, TrialStats, CSV helpers
 
 class MasterHandle {
+    public:
+        struct optim_lstm_weights_biases_t
+            {
+                int8_t* m_x_l0_w;
+                int32_t* m_x_l0_b;
+
+                int8_t* m_h_l0_w;
+                int32_t* m_h_l0_b;
+
+                int8_t* m_x_l1_w;
+                int32_t* m_x_l1_b;
+
+                int8_t* m_h_l1_w;
+                int32_t* m_h_l1_b;
+            };
+
+    struct optim_lstm_weights_biases_const_t {
+        const int8_t*  m_x_l0_w;  const int32_t* m_x_l0_b;
+        const int8_t*  m_h_l0_w;  const int32_t* m_h_l0_b;
+        const int8_t*  m_x_l1_w;  const int32_t* m_x_l1_b;
+        const int8_t*  m_h_l1_w;  const int32_t* m_h_l1_b;
+    };
     private:
         Model** m_model;
         uint8_t* m_psram_model_ptr[4];
@@ -38,7 +60,14 @@ class MasterHandle {
         const int feature_ch = 56;
 
         bool usePSRAM = true;
+        OptimizedNativeLSTM* m_optim_lstm;
+        optim_lstm_weights_biases_t m_model_optim_data;
+        optim_lstm_weights_biases_const_t m_model_optim_data_flash;
 
+        int8_t* m_lstm_hq = nullptr;   // [2*H] persistent hidden state (int8, IN_H space)
+        int8_t* m_lstm_cq = nullptr;   // [2*H] persistent cell state   (int8, IN_C space)
+
+        int16_t* m_lstm_cq16 = nullptr;   // [2*H] int16 cell state for c16 path
     public:
         MasterHandle(const int models_count,
             const uint8_t** flash_models_ptrs,
@@ -56,6 +85,13 @@ class MasterHandle {
 
         void init_models(int model_1_index, int model_2_index,int model_3_index, int model_4_index,
         bool usePSRAM, char* report_buffer, int size);
+
+
+        void init_optim_lstm(const char* partition);
+        void reset_optim_lstm_state();
+        void clear_optim_lstm();
+
+        uint64_t optim_lstm_step(const float* x_slice_f32, int x_len, float* y_out_f32, bool use_c16);
 
         double print_output(const float* output_window, int output_size, const float* correct_window);
 
@@ -88,12 +124,28 @@ class MasterHandle {
                                  float* out_f32, int first_a_out_size,
                                  WindowStageTimes* wt);
 
+        // int8-out variant of stage 1 (model[0] emits int8 in model[1] input space, ELU via LUT in place)
+        void stage1_first_a_int8(const float* input_ptr, int input_size,
+                                int8_t* out_int8, int first_a_out_size,
+                                WindowStageTimes* wt);
+
+        
+
         // Concatenate stage1 output (already ELU'd) with the original input.
         // (identical for both variants -> single function)
         void concat_with_input(const float* first_a_after_elu, int first_a_out_size,
                                const float* input_ptr, int input_size,
                                float* concat_out);
 
+        // concat in int8 (model[1] input space): [ elu'd_A | quant(x) ]
+        void concat_with_input_int8(const int8_t* first_a_after_elu, int first_a_out_size,
+                                    const float* input_ptr, int input_size,
+                                    int8_t* concat_out);
+
+        // stage 2 with int8 input, float output (model[1] = int8 model, dequantized result)
+        void stage2_first_b_int8_in(const int8_t* concat_in, int concat_in_size,
+                                    float* out_f32, int first_b_out_size,
+                                    WindowStageTimes* wt);
         // ============================================================
         // STAGE 2: First Block B  (conv/dense)
         //   - emits float32 result of size first_b_out_size into out_f32
@@ -136,26 +188,28 @@ class MasterHandle {
         // Bundle the four stage choices. Build one of these per config (matching
         // whatever init_models() you called) and pass it to dual_inference.
         struct QuantConfig {
-            StageFn first_a;     // &MasterHandle::stage1_first_a_int8   or _f32
-            StageFn first_b;     // &MasterHandle::stage2_first_b_f32    or _int8
-            StepFn  lstm_step;   // &MasterHandle::lstm_step_f32         or _int8
-            StepFn  reg_step;    // &MasterHandle::regressor_step_f32    or _int8
-            // quant labels carried alongside the function choice, so the CSV can
-            // print them without a second source of truth.
+            StageFn first_a;
+            StageFn first_b;
+            StepFn  lstm_step;
+            StepFn  reg_step;
             const char* label_a    = "f32";
             const char* label_b    = "f32";
             const char* label_lstm = "f32";
             const char* label_reg  = "f32";
+            bool first_a_is_int8 = false;
+            bool use_optim_lstm  = false;   // true -> native ESP-NN LSTM (step==1 only)
+            bool use_c16 = false;
         };
-
         // The recurrent loop orchestrator (dtype-agnostic; takes member fn ptrs).
         // Pushes per-step ticks (lstm/regressor) into the trial accumulator.
         void recurrent_loop(const float* first_b_out, int first_out_len,
-                            float* output_ptr, int out_len, int step,
-                            float* second_input_ptr, const int* second_input_lengths,
-                            int intermediate_size, int state_size,
-                            StepFn lstm_step, StepFn reg_step,
-                            TrialStats* trial);
+                                  float* output_ptr, int out_len, int step,
+                                  float* second_input_ptr, const int* second_input_lengths,
+                                  int intermediate_size, int state_size,
+                                  StepFn lstm_step, StepFn reg_step,
+                                  TrialStats* trial,
+                                  bool use_optim_lstm,
+                                  bool use_c16);   
 
         // Top-level orchestrator. Stages chosen at runtime via QuantConfig.
         // Reports timing through wt (per-window) and trial (per-step).
@@ -166,7 +220,7 @@ class MasterHandle {
                             int intermediate_size, int first_out_len,
                             WindowStageTimes* wt, TrialStats* trial);
 
-
+    
         void apply_elu_float(float* in, int n, float alpha);
         void build_elu_lut(float in_scale, int32_t in_zp,
                         float out_scale, int32_t out_zp, float alpha);

@@ -1,4 +1,6 @@
 // The main goal is to implement LSTM using ESP-NN native
+#ifndef OPTIM_LSTM_H
+#define OPTIM_LSTM_H
 
 #include "esp_nn.h"
 #include "esp_timer.h"
@@ -6,6 +8,7 @@
 #include <string.h>
 #include <math.h>
 #include "lstm_nn_manifests/lstm_q.h"
+#include "esp_heap_caps.h"
 #define SIG_SCALE   (1.0f / 256.0f)
 #define SIG_ZP      (-128)
 #define TANH_SCALE  (1.0f / 128.0f)
@@ -44,9 +47,11 @@ private:
     int x_features;
     int h_features;
 
-    int8_t m_sig_lut[256];
-    int8_t m_tanh_lut[256];
+    int8_t m_tanh_g_lut[2][256];    // tanh for g-gate (gates space)
+    int8_t m_tanh_c_lut[2][256];    // tanh for c_new   (c_new space)
+    int8_t m_sig_lut[2][256];       // sigmoid (gates space)  -- promote existing to per-layer
 
+    int8_t* m_tanh_c16_lut[2] = {nullptr, nullptr};
     struct EwParams {
         // gates = x_hat + h_hat   (add: two inputs in different scales)
         int32_t add_in1_mult, add_in1_shift;   // from s_xhat
@@ -88,6 +93,8 @@ private:
     int8_t* m_cf;       // [H]  c*f
     int8_t* m_ig;       // [H]  i*g
     int8_t* m_tanh_c;   // [H]  tanh(c_new)
+    int16_t* m_cf16   = nullptr;   // [H]
+    int16_t* m_ig16   = nullptr;   // [H]
 public:
 
     static void quantize_multiplier(double M, int32_t *mult, int32_t *shift);
@@ -121,7 +128,19 @@ public:
 
     // ESP-NN does not provide a default implementation for tanh activation
     static void build_tanh_lut(int8_t *lut, int32_t in_zp, float in_scale);
+    void build_tanh_lut_c16(int8_t* lut, int32_t in_zp, float in_scale);
     
+    void run_cell_step_c16(
+    int layer,
+    const int8_t* in_x, int row_len_x, int32_t xin_off,
+    const int8_t* in_h, int32_t hin_off, int32_t cin_off,
+    const int16_t* in_c,
+    int16_t* out_c, int8_t* out_h);
+
+    static inline int32_t requant_s64(int64_t acc, int32_t mult, int32_t shift);
+    
+    void run_timestep_q_c16(const int8_t* x_q, int8_t* h_q,
+                            int16_t* c_q, int8_t* y_out);
     void run_cell_step(
         int layer,
         const int8_t* in_x, int row_len_x, int32_t xin_off,
@@ -140,3 +159,4 @@ public:
         free(m_cf); free(m_ig); free(m_tanh_c);
     }
 };
+#endif

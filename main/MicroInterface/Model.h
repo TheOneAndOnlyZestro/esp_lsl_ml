@@ -45,8 +45,8 @@ public:
 
     bool predict(const float* input_data, const int* input_lengths, float* results, const int* output_lengths);
     bool predict(const int8_t* input_data, const int* input_lengths, int8_t* results, const int* output_lengths);
-    
     bool predict(const float* input_data, const int* input_lengths, int8_t* results, const int* output_lengths);
+    bool predict(const int8_t* input_data, const int* input_lengths, float* results, const int* output_lengths);
 
     float   getInputScale(int i)      const { return input[i]->params.scale; }
     int32_t getInputZeroPoint(int i)  const { return input[i]->params.zero_point; }

@@ -2,7 +2,6 @@
 #include "benchmark_handle.h"
 //#include "window_data.h"
 #include "binary_manifests/dense_for_espnn/manifest_0.h"
-#include "OptimizedNativeLSTM.h"
 #include "weights.h"
 
 #include "lsl_handle.h"
@@ -453,7 +452,7 @@ void run_app()
     // CSV header, written ONCE at the top of the report.
     trial_report_header(final_report, REPORT_MAX);
 
-    for(int i =0; i < CONFIG_COUNT; i++)
+    for(int i = 18; i < CONFIG_COUNT - 1; i++)
     {
         uint64_t startTimeTrial = esp_timer_get_time();
         const int input_win_len     = (int)MAIN_WINDOW_LENS[i];
@@ -495,21 +494,26 @@ void run_app()
 
         // 0,1,2,3. 4,5,6,7
         //trying with only the first one being int8
-        const int idx_a    = i*8 + 4;
-        const int idx_b    = i*8 + 5;
+        const int idx_a    = i*8 + 0;
+        const int idx_b    = i*8 + 1;
         const int idx_lstm = i*8 + 2;
         const int idx_reg  = i*8 + 3;
         master_handle->init_models(idx_a, idx_b, idx_lstm, idx_reg,
                                    true, final_report, REPORT_MAX);
-
+        master_handle->init_optim_lstm("lstm_weights");
         // Pick the per-stage quant variants to match the init_models indices above.
         // The labels carried here are what the CSV prints for this trial.
         MasterHandle::QuantConfig qc;
-        qc.first_a   = &MasterHandle::stage1_first_a_int8;   qc.label_a    = "int8";
-        qc.first_b   = &MasterHandle::stage2_first_b_int8;    qc.label_b    = "int8";
-        qc.lstm_step = &MasterHandle::lstm_step_f32;         qc.label_lstm = "f32";
-        qc.reg_step  = &MasterHandle::regressor_step_f32;    qc.label_reg  = "f32";
+        qc.first_a_is_int8 = false;
+        qc.use_optim_lstm = true;
+        qc.first_a    = &MasterHandle::stage1_first_a_f32;
+        qc.label_a    = "f32";
+        qc.first_b    = &MasterHandle::stage2_first_b_f32; 
+        qc.label_b    = "f32";                            // model[1] is now an int8 model
+        qc.lstm_step  = &MasterHandle::lstm_step_f32;      qc.label_lstm = "f32";
+        qc.reg_step   = &MasterHandle::regressor_step_f32; qc.label_reg  = "f32";
 
+        
         // ---- per-trial accumulator ----
         TrialStats trial;
         trial.config       = i;
@@ -530,6 +534,9 @@ void run_app()
         trial.arena_lstm_kb = master_handle->getArenaUsedBytes(2) / 1024.0;
         trial.arena_reg_kb  = master_handle->getArenaUsedBytes(3) / 1024.0;
 
+        if (qc.use_optim_lstm) {
+            master_handle->reset_optim_lstm_state();
+        }
         int win_count = 0;
         while(in_win < input_trial_len && out_win < output_trial_len)
         {
@@ -570,7 +577,8 @@ void run_app()
                  i, (unsigned long long)trial.trial_total_us, trial.mse.avg());
 
         vTaskDelay(10 / portTICK_PERIOD_MS); // Adjust delay as needed for timing
-
+        
+        master_handle->clear_optim_lstm();
     }
 
     // The whole report is now a valid CSV: one header line + one row per trial.

@@ -12,6 +12,7 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 
+#include "lstm_nn_manifests/lstm_q.h"
 enum OFFSET_TYPE{
     FLOAT32, INT8
 };
@@ -32,6 +33,12 @@ public:
         OFFSET_TYPE offset_type = OFFSET_TYPE::FLOAT32);
     
     
+    bool allocatePointerOnFlashOptimLSTMWeightsBiases(const char* partition,
+        const int8_t** x0w, const int32_t** x0b,
+        const int8_t** h0w, const int32_t** h0b,
+        const int8_t** x1w, const int32_t** x1b,
+        const int8_t** h1w, const int32_t** h1b);
+        
     uint8_t* allocatePointerOnPSRAM(const int size);
 };
 

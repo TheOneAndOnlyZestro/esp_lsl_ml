@@ -71,6 +71,7 @@ struct TrialStats {
 
     // per-step reductions (over all steps of all windows in the trial)
     AvgMax lstm_step;           // ticks
+    AvgMax lstm_native_us;   // native ESP-NN LSTM per-step time (us); empty for tflite path
     AvgMax reg_step;            // ticks
 
     // trial-level scalar
@@ -81,6 +82,7 @@ struct TrialStats {
         elua.reset(); elub.reset();
         window_us.reset(); mse.reset();
         lstm_step.reset(); reg_step.reset();
+        lstm_native_us.reset();
         trial_total_us = 0;
     }
 
@@ -92,7 +94,7 @@ struct TrialStats {
         window_us.add((double)w.window_us);
         mse.add(w.mse);
     }
-
+    inline void add_lstm_native_step(double us) { lstm_native_us.add(us); }
     inline void add_lstm_step(int32_t ticks) { lstm_step.add((double)ticks); }
     inline void add_reg_step(int32_t ticks)  { reg_step.add((double)ticks); }
 };
@@ -110,6 +112,7 @@ inline void trial_report_header(char* buf, int size)
         "infb_ticks_avg,infb_ticks_max,elub_us_avg,elub_us_max,"
         "lstm_step_ticks_avg,lstm_step_ticks_max,"
         "reg_step_ticks_avg,reg_step_ticks_max,"
+        "lstm_native_us_avg,lstm_native_us_max,"
         "window_us_avg,window_us_max,"
         "trial_total_us,"
         "mse_avg,mse_max\n");
@@ -128,6 +131,7 @@ inline void trial_report_row(char* buf, int size, const TrialStats& t)
         "%.2f,%.0f,%.2f,%.0f,"
         "%.2f,%.0f,"
         "%.2f,%.0f,"
+        "%.2f,%.0f," 
         "%.2f,%.0f,"
         "%llu,"
         "%.6e,%.6e\n",
@@ -139,6 +143,7 @@ inline void trial_report_row(char* buf, int size, const TrialStats& t)
         t.infb.avg(), t.infb.max(), t.elub.avg(), t.elub.max(),
         t.lstm_step.avg(), t.lstm_step.max(),
         t.reg_step.avg(), t.reg_step.max(),
+        t.lstm_native_us.avg(), t.lstm_native_us.max(),
         t.window_us.avg(), t.window_us.max(),
         (unsigned long long)t.trial_total_us,
         t.mse.avg(), t.mse.max());

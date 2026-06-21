@@ -316,6 +316,51 @@ bool Model::predict(const float* input_data, const int* input_lengths, int8_t* r
 
     return true;
 }
+bool Model::predict(const int8_t* input_data, const int* input_lengths, float* results, const int* output_lengths)
+{
+    if (!initialized) {
+        return false;
+    }
+
+    int input_offset = 0;
+    for(int i =0; i < input_size; i++) {
+        if (input[i]->type == kTfLiteInt8) {
+            for (int j = 0; j < input_lengths[i]; j++) {
+                input[i]->data.int8[j] = input_data[input_offset + j];
+            }
+        } else {
+            printf("Expected int8 input, got %d\n", input[i]->type);
+            return false;
+        }
+        input_offset += input_lengths[i];
+    }
+
+    if (interpreter->Invoke() != kTfLiteOk) {
+        printf("Invoke() failed!\n");
+        return false;
+    }
+
+    int output_offset = 0;
+    for(int i =0; i < output_size; i++) {
+        if (output[i]->type == kTfLiteFloat32) {
+            for (int j = 0; j < output_lengths[i]; j++) {
+                results[output_offset + j] = output[i]->data.f[j];
+            }
+        } else if (output[i]->type == kTfLiteInt8) {
+            for (int j = 0; j < output_lengths[i]; j++) {
+                results[output_offset + j] = (static_cast<float>(output[i]->data.int8[j])
+                    - output[i]->params.zero_point)
+                    * output[i]->params.scale;
+            }
+        } else {
+            printf("Unkown data type in output\n");
+            return false;
+        }
+        output_offset += output_lengths[i];
+    }
+
+    return true;
+}
 size_t Model::getArenaUsedBytes() const {
     if (interpreter) return interpreter->arena_used_bytes();
     return 0;
