@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
-#include "lstm_nn_manifests/lstm_q.h"
+#include "lstm_nn_manifests/c16/lstm_q.h"
 #include "esp_heap_caps.h"
 #define SIG_SCALE   (1.0f / 256.0f)
 #define SIG_ZP      (-128)

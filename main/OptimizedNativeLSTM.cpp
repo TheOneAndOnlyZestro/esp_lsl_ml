@@ -289,6 +289,7 @@ void OptimizedNativeLSTM::run_cell_step_c16(
     const int16_t* in_c,
     int16_t* out_c, int8_t* out_h)
 {
+    // issue in h_hat, second layer
     const EwParams& P = m_ew[layer];
     int8_t *xw,*hw; int32_t *xb,*hb;
     const int32_t *x_mult,*x_shift,*h_mult,*h_shift;
@@ -307,17 +308,23 @@ void OptimizedNativeLSTM::run_cell_step_c16(
         x_in_off=LSTM_Q_L1_X_INPUT_OFFSET; x_out_off=LSTM_Q_L1_X_OUT_OFFSET;
         h_in_off=LSTM_Q_L1_H_INPUT_OFFSET; h_out_off=LSTM_Q_L1_H_OUT_OFFSET;
     }
-
+    
     // gates: identical int8 path (x_hat, h_hat, add, sig/tanh-g) -- unchanged
     esp_nn_fully_connected_per_ch_s8(in_x, x_in_off, (uint16_t)row_len_x, xw, 0,
         xb, m_xhat, (uint16_t)G, x_out_off, x_shift, x_mult, -128, 127);
+
+    
     esp_nn_fully_connected_per_ch_s8(in_h, h_in_off, (uint16_t)H, hw, 0,
         hb, m_hhat, (uint16_t)G, h_out_off, h_shift, h_mult, -128, 127);
+
     esp_nn_add_elementwise_s8(m_xhat, m_hhat, -x_out_off, -h_out_off,
         P.add_in1_mult, P.add_in2_mult, P.add_in1_shift, P.add_in2_shift, P.add_left_shift,
         m_gates, P.z_gates, P.add_out_mult, P.add_out_shift, -128, 127, G);
 
     esp_nn_logistic_s8(m_gates, m_if, 2*H, m_sig_lut[layer]);
+
+    
+
     for (int k=0;k<H;k++) m_g[k]=m_tanh_g_lut[layer][(uint8_t)m_gates[2*H+k]];
     for (int k=0;k<H;k++) m_o[k]=m_sig_lut[layer][(uint8_t)m_gates[3*H+k]];
 
@@ -331,7 +338,7 @@ void OptimizedNativeLSTM::run_cell_step_c16(
     // c * f  -> int16 c_new space
     for (int k=0;k<H;k++) {
         int32_t cv = (int32_t)in_c[k] - c_zp;            // int16 c recentered
-        int32_t fv = (int32_t)f_gate[k] - (-SIG_ZP);     // == f_gate[k] + 128
+        int32_t fv = (int32_t)f_gate[k] + (-SIG_ZP);     // == f_gate[k] + 128
         int64_t acc = (int64_t)cv * (int64_t)fv;
         int32_t q = requant_s64(acc, P.cf_mult, P.cf_shift) + cnew_zp;
         if (q < -32768) q = -32768; else if (q > 32767) q = 32767;
@@ -340,8 +347,8 @@ void OptimizedNativeLSTM::run_cell_step_c16(
 
     // i * g -> int16 c_new space
     for (int k=0;k<H;k++) {
-        int32_t iv = (int32_t)i_gate[k] - (-SIG_ZP);     // +128
-        int32_t gv = (int32_t)m_g[k]    - (-TANH_ZP);    // +0
+        int32_t iv = (int32_t)i_gate[k] + (-SIG_ZP);     // +128
+        int32_t gv = (int32_t)m_g[k]    + (-TANH_ZP);    // +0
         int64_t acc = (int64_t)iv * (int64_t)gv;
         int32_t q = requant_s64(acc, P.ig_mult, P.ig_shift) + cnew_zp;
         if (q < -32768) q = -32768; else if (q > 32767) q = 32767;
@@ -368,6 +375,116 @@ void OptimizedNativeLSTM::run_cell_step_c16(
     // h_new = o * tanh(c_new) -> int8 (unchanged int8 mul)
     esp_nn_mul_elementwise_s8(m_o, m_tanh_c, -SIG_ZP, -TANH_ZP,
         out_h, P.z_h_new, P.oh_mult, P.oh_shift, -128, 127, H);
+
+
+    printf("IG_mult: %ld, IG_SHIFT: %ld\n", P.ig_mult, P.ig_shift);
+
+    if(layer == 0)
+    {
+        // for (int i =0; i < (56); i++)
+        // {
+        //     //dequant first
+        //     float dequant = ((int32_t)in_h[i] - LSTM_Q_IN_H_ZP) * LSTM_Q_IN_H_SCALE;
+        //     printf("l(%d) h (%d): %0.6e\n", layer, i, dequant);
+        // }
+        // for (int i =0; i < (56 * 4); i++)
+        // {
+        //     //dequant first
+        //     float dequant = ((int32_t)m_hhat[i] - LSTM_Q_L0_H_HAT_ZP) * LSTM_Q_L0_H_HAT_SCALE;
+        //     printf("l(%d) h_hat (%d): %0.6e\n", layer, i, dequant);
+        // }
+        // for (int i =0; i < (56); i++)
+        // {
+        //     //dequant first
+        //     float dequant = ((int32_t)i_gate[i] - SIG_ZP) * SIG_SCALE;
+        //     printf("l(%d) i output (%d): %0.6e\n", layer, i, dequant);
+        // }
+        // for (int i =0; i < (56); i++)
+        // {
+        //     //dequant first
+        //     float dequant = ((int32_t)m_g[i] - TANH_ZP) * TANH_SCALE;
+        //     printf("l(%d) g output (%d): %0.6e\n", layer,i, dequant);
+        // }
+        for (int i =0; i < (56); i++)
+        {
+            //dequant first
+            float dequant = ((int32_t)m_ig16[i] - LSTM_Q_L0_C_NEW_ZP) * LSTM_Q_L0_C_NEW_SCALE;
+            printf("l(%d) ig output (%d):%d, %0.6e\n", layer,i, m_ig16[i],dequant);
+        }
+        for (int i =0; i < (56); i++)
+        {
+            //dequant first
+            float dequant = ((int32_t)m_cf16[i] - LSTM_Q_L0_C_NEW_ZP) * LSTM_Q_L0_C_NEW_SCALE;
+            printf("l(%d) cf output (%d): %0.6e\n", layer,i, dequant);
+        }
+
+        // for (int i =0; i < (56); i++)
+        // {
+        //     //dequant first
+        //     float dequant = ((int32_t)out_h[i] - LSTM_Q_L0_H_NEW_ZP) * LSTM_Q_L0_H_NEW_SCALE;
+        //     printf("l(%d) h_new output (%d): %0.6e\n", layer,i, dequant);
+        // }
+
+        // for (int i =0; i < (56); i++)
+        // {
+        //     //dequant first
+        //     float dequant = ((int32_t)out_c[i] - LSTM_Q_L0_C_NEW_ZP) * LSTM_Q_L0_C_NEW_SCALE;
+        //     printf("l(%d) c_new output (%d): %0.6e\n", layer,i, dequant);
+        // }
+    }else{
+        // for (int i =0; i < (56); i++)
+        // {
+        //     //dequant first
+        //     float dequant = ((int32_t)in_h[i] - LSTM_Q_L1_H_INPUT_OFFSET) * LSTM_Q_L1_H_S_IN;
+        //     printf("l(%d) h (%d): %0.6e\n", layer, i, dequant);
+        // }
+        // for (int i =0; i < (56 * 4); i++)
+        // {
+        //     //dequant first
+        //     float dequant = ((int32_t)m_hhat[i] - LSTM_Q_L1_H_HAT_ZP) * LSTM_Q_L1_H_HAT_SCALE;
+        //     printf("l(%d) h_hat (%d): %0.6e\n", layer, i, dequant);
+        // }
+        // for (int i =0; i < (56); i++)
+        // {
+        //     //dequant first
+        //     float dequant = ((int32_t)i_gate[i] - SIG_ZP) * SIG_SCALE;
+        //     printf("l(%d) i output (%d): %0.6e\n", layer, i, dequant);
+        // }
+        // for (int i =0; i < (56); i++)
+        // {
+        //     //dequant first
+        //     float dequant = ((int32_t)m_g[i] - TANH_ZP) * TANH_SCALE;
+        //     printf("l(%d) g output (%d): %0.6e\n", layer,i, dequant);
+        // }
+        // for (int i =0; i < (56); i++)
+        // {
+        //     //dequant first
+        //     float dequant = ((int32_t)m_ig16[i] - LSTM_Q_L1_C_NEW_ZP) * LSTM_Q_L1_C_NEW_SCALE;
+        //     printf("l(%d) ig output (%d):%d, %0.6e\n", layer,i, m_ig16[i],dequant);
+        // }
+        // for (int i =0; i < (56); i++)
+        // {
+        //     //dequant first
+        //     float dequant = ((int32_t)m_cf16[i] - LSTM_Q_L1_C_NEW_ZP) * LSTM_Q_L1_C_NEW_SCALE;
+        //     printf("l(%d) cf output (%d): %0.6e\n", layer,i, dequant);
+        // }
+
+        // for (int i =0; i < (56); i++)
+        // {
+        //     //dequant first
+        //     float dequant = ((int32_t)out_h[i] - LSTM_Q_L1_H_NEW_ZP) * LSTM_Q_L1_H_NEW_SCALE;
+        //     printf("l(%d) h_new output (%d): %0.6e\n", layer,i, dequant);
+        // }
+
+        // for (int i =0; i < (56); i++)
+        // {
+        //     //dequant first
+        //     float dequant = ((int32_t)out_c[i] - LSTM_Q_L1_C_NEW_ZP) * LSTM_Q_L1_C_NEW_SCALE;
+        //     printf("l(%d) c_new output (%d): %0.6e\n", layer,i, dequant);
+        // }
+    }
+    
+    
 }
 
 void OptimizedNativeLSTM::run_timestep_q(const int8_t* x_q, int8_t* h_q, int8_t* c_q, int8_t* y_out)
@@ -392,6 +509,7 @@ void OptimizedNativeLSTM::run_timestep_q_c16(const int8_t* x_q, int8_t* h_q,
     run_cell_step_c16(0, x_q, x_features, LSTM_Q_L0_X_INPUT_OFFSET,
                       h_q + 0*H, LSTM_Q_L0_H_INPUT_OFFSET, LSTM_Q_IN_C_ZP,
                       c_q + 0*H, c_q + 0*H, h_q + 0*H);
+
     run_cell_step_c16(1, h_q + 0*H, H, LSTM_Q_L1_X_INPUT_OFFSET,
                       h_q + 1*H, LSTM_Q_L1_H_INPUT_OFFSET, LSTM_Q_L1_C_NEW_ZP,
                       c_q + 1*H, c_q + 1*H, h_q + 1*H);

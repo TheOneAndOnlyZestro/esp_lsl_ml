@@ -506,6 +506,7 @@ void run_app()
         MasterHandle::QuantConfig qc;
         qc.first_a_is_int8 = false;
         qc.use_optim_lstm = true;
+        qc.use_c16 = true;
         qc.first_a    = &MasterHandle::stage1_first_a_f32;
         qc.label_a    = "f32";
         qc.first_b    = &MasterHandle::stage2_first_b_f32; 
