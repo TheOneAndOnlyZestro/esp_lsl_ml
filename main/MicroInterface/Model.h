@@ -34,11 +34,18 @@ private:
 
     bool inPSRAM;
 
+    bool owns_arena = true;          // false when arena is borrowed (persistent)
+    void init_common(const unsigned char* model_data, char* report_buffer, int size);
+    
     tflite::MicroProfiler profiler;
 public:
     // Constructor — override default 80 KB arena if a model needs more
     Model(ModelFlash* model_flash, const unsigned char* model_data, int arena_size, 
         size_t input_size, size_t output_size, bool usePSRAM,char* report_buffer, int size);
+
+     Model(ModelFlash* model_flash, const unsigned char* model_data,
+        uint8_t* external_arena, int arena_size,
+        size_t input_size, size_t output_size, bool usePSRAM, char* report_buffer, int size);
 
     // Destructor — frees arena and interpreter
     ~Model();

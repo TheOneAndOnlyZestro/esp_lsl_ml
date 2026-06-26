@@ -1,12 +1,18 @@
 #include "master_handle.h"
 #include "benchmark_handle.h"
 //#include "window_data.h"
-#include "binary_manifests/dense_for_espnn/manifest_0.h"
+//#include "binary_manifests/dense_for_espnn/manifest_0.h"
+#include "binary_manifests/dense_layers_seed1/manifest_0.h"
 #include "weights.h"
 
 #include "lsl_handle.h"
-#include "binary_manifests/four_models_corrected/manifest_0.h"
-#include "binary_manifests/four_models_corrected/models_manifest_0.h"
+#include "binary_manifests/four_models_old_model_real_y/manifest_0.h"
+#include "binary_manifests/four_models_old_model/models_manifest_0.h"
+#include "tensorflow/lite/micro/micro_time.h"
+
+#include "benchmark_metrics.h"
+#include "sram_fitness.h"
+#include "tensorflow/lite/micro/micro_time.h"   // tflite::ticks_per_second()
 #define REPORT_MAX 20000
 
 #define LSTM_FEATURES (CONFIG_INPUT_CHANNELS + 48)
@@ -452,7 +458,7 @@ void run_app()
     // CSV header, written ONCE at the top of the report.
     trial_report_header(final_report, REPORT_MAX);
 
-    for(int i = 18; i < CONFIG_COUNT - 1; i++)
+    for(int i = 0; i < CONFIG_COUNT; i++)
     {
         uint64_t startTimeTrial = esp_timer_get_time();
         const int input_win_len     = (int)MAIN_WINDOW_LENS[i];
@@ -505,12 +511,12 @@ void run_app()
         // The labels carried here are what the CSV prints for this trial.
         MasterHandle::QuantConfig qc;
         qc.first_a_is_int8 = false;
-        qc.use_optim_lstm = true;
-        qc.use_c16 = true;
+        qc.use_optim_lstm = false;
+        qc.use_c16 = false;
         qc.first_a    = &MasterHandle::stage1_first_a_f32;
         qc.label_a    = "f32";
         qc.first_b    = &MasterHandle::stage2_first_b_f32; 
-        qc.label_b    = "f32";                            // model[1] is now an int8 model
+        qc.label_b    = "f32";
         qc.lstm_step  = &MasterHandle::lstm_step_f32;      qc.label_lstm = "f32";
         qc.reg_step   = &MasterHandle::regressor_step_f32; qc.label_reg  = "f32";
 
@@ -587,6 +593,318 @@ void run_app()
 
 }
 
+
+// void run_testing_benchmark()
+// {
+//     BenchmarkHandle* benchmark_handle = new BenchmarkHandle("benchmark_models");
+    
+//     // We need to now do a for loop for all models 
+
+//     // Step 1: Pull the data from lsl into the windowed buffer
+//     // Step 2: Run inference on the windowed buffer which should put the appropriate output into the output buffer
+//     // Step 3: Push the output data buffer to the LSL outlet    
+//     char final_report[REPORT_MAX] = {0};
+//     int final_report_size = strlen(final_report);
+
+//     ModelFlash* mf = new ModelFlash();
+
+//     const uint8_t** data = new const uint8_t*[TENSOR_COUNT];
+//     // need to convert OFFSET from float count to actual byte size
+//     bool success = mf->allocatePointerOnFlash("benchmark_data", data, TENSOR_COUNT, OFFSETS, OFFSET_TYPE::FLOAT32);
+    
+//     float mse = 0;
+
+//     float* input_buffer;
+//     float* output_buffer;
+//     float* correct_buffer;
+//     int* input_sizes;
+//     int* output_sizes;
+
+//     int total_input_size = 0;
+//     int total_output_size = 0;
+
+//     for(int i =0; i < (int)(BENCHMARK_MODEL_COUNT / 2); i++)
+//     {
+//         int index = (i * 2);
+//         allocateInputandOutputbuffers(&input_buffer, &output_buffer, &correct_buffer, &input_sizes, &output_sizes,
+//              data, &total_input_size, &total_output_size, i, true);
+
+//         final_report_size = strlen(final_report);
+//         snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Index %d\nQuant Type: Float32\n", i);
+        
+//         benchmark_handle->init_model(index, true, BENCHMARK_INPUT_SIZES[i], BENCHMARK_OUTPUT_SIZES[i], final_report, final_report_size);
+
+//         benchmark_handle->run_inference(input_buffer, input_sizes, output_buffer, output_sizes, final_report, final_report_size);
+       
+//         mse = benchmark_handle->print_output(output_buffer, total_output_size, correct_buffer);
+        
+//         benchmark_handle->clear_models();
+
+//         final_report_size = strlen(final_report);
+//         snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: %0.4f\n\n", mse);
+        
+//         // Now for int8
+//         final_report_size = strlen(final_report);
+//         snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Index %d\nQuant Type: Int8\n", i);
+        
+//         benchmark_handle->init_model(index + 1, true, BENCHMARK_INPUT_SIZES[i], BENCHMARK_OUTPUT_SIZES[i], final_report, final_report_size);
+
+//         benchmark_handle->run_inference(input_buffer, input_sizes, output_buffer, output_sizes, final_report, final_report_size);
+       
+//         mse = benchmark_handle->print_output(output_buffer, total_output_size, correct_buffer);
+
+//         benchmark_handle->clear_models();
+
+//         final_report_size = strlen(final_report);
+//         snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: %0.4f\n\n", mse);
+
+//         heap_caps_free(input_buffer);
+//         input_buffer = nullptr;
+//         heap_caps_free(output_buffer);
+//         output_buffer = nullptr;
+//         heap_caps_free(correct_buffer);
+//         correct_buffer = nullptr;
+
+//         delete[] input_sizes;
+//         input_sizes = nullptr;
+//         delete[] output_sizes;
+//         output_sizes = nullptr;
+
+//         total_input_size = 0;
+//         total_output_size = 0;
+        
+//         if (BENCHMARK_MODEL_SIZES[index] > 150000 || BENCHMARK_MODEL_SIZES[index + 1] > 150000)
+//         {
+//             // Don't allocate on SRAM
+//             final_report_size = strlen(final_report);
+//             snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Index %d\nQuant Type: Float32\n", i);
+            
+//             final_report_size = strlen(final_report);
+//             snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model Model_Size: TOO_LARGE B\n");
+
+//             final_report_size = strlen(final_report);
+//             snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model Arena_Size: TOO_LARGE B\n");
+
+//             final_report_size = strlen(final_report);
+//             snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model init: TOO_LARGE \xCE\xBCs, TOO_LARGE ms\n");
+
+//             final_report_size = strlen(final_report);
+//             snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model Inf: TOO_LARGE \xCE\xBCs, TOO_LARGE ms\n");
+            
+//             final_report_size = strlen(final_report);
+//             snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: TOO_LARGE \n\n");
+
+//             // Don't allocate on SRAM
+//             final_report_size = strlen(final_report);
+//             snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Index %d\nQuant Type: Int8\n", i);
+            
+//             final_report_size = strlen(final_report);
+//             snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model Model_Size: TOO_LARGE B\n");
+
+//             final_report_size = strlen(final_report);
+//             snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model Arena_Size: TOO_LARGE B\n");
+
+//             final_report_size = strlen(final_report);
+//             snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model init: TOO_LARGE \xCE\xBCs, TOO_LARGE ms\n");
+
+//             final_report_size = strlen(final_report);
+//             snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model Inf: TOO_LARGE \xCE\xBCs, TOO_LARGE ms\n");
+            
+//             final_report_size = strlen(final_report);
+//             snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: TOO_LARGE \n\n");
+            
+//             continue;
+//         }
+//         // TEST with normal ram
+//         allocateInputandOutputbuffers(&input_buffer, &output_buffer, &correct_buffer, &input_sizes, &output_sizes,
+//              data, &total_input_size, &total_output_size, i, false);
+
+//         final_report_size = strlen(final_report);
+//         snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Index %d\nQuant Type: Float32\n", i);
+        
+//         benchmark_handle->init_model(index, false, BENCHMARK_INPUT_SIZES[i], BENCHMARK_OUTPUT_SIZES[i], final_report, final_report_size);
+
+//         benchmark_handle->run_inference(input_buffer, input_sizes, output_buffer, output_sizes, final_report, final_report_size);
+       
+//         mse = benchmark_handle->print_output(output_buffer, total_output_size, correct_buffer);
+        
+//         benchmark_handle->clear_models();
+
+//         final_report_size = strlen(final_report);
+//         snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: %0.4f\n\n", mse);
+//         vTaskDelay(10 / portTICK_PERIOD_MS); // Adjust delay as needed for timing
+
+//         final_report_size = strlen(final_report);
+//         snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Index %d\nQuant Type: Int8\n", i);
+        
+//         benchmark_handle->init_model(index + 1, false, BENCHMARK_INPUT_SIZES[i], BENCHMARK_OUTPUT_SIZES[i], final_report, final_report_size);
+
+//         benchmark_handle->run_inference(input_buffer, input_sizes, output_buffer, output_sizes, final_report, final_report_size);
+       
+//         mse = benchmark_handle->print_output(output_buffer, total_output_size, correct_buffer);
+
+//         benchmark_handle->clear_models();
+
+//         final_report_size = strlen(final_report);
+//         snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: %0.4f\n\n", mse);
+
+//         free(input_buffer);
+//         input_buffer = nullptr;
+//         free(output_buffer);
+//         output_buffer = nullptr;
+//         free(correct_buffer);
+//         correct_buffer = nullptr;
+
+//         delete[] input_sizes;
+//         input_sizes = nullptr;
+//         delete[] output_sizes;
+//         output_sizes = nullptr;
+
+//         total_input_size = 0;
+//         total_output_size = 0;
+//     }
+
+//     ESP_LOGI("FINAL REPORT", "%s", final_report);
+// }
+
+// static void benchmark_one_quant(BenchmarkHandle* bh,
+//                                 const uint8_t** data,
+//                                 int config_index,
+//                                 bool quant_is_int8,
+//                                 uint32_t tps,
+//                                 char* csv, int cap, int* csv_len) {
+//     const int slot = config_index * 2 + (quant_is_int8 ? 1 : 0);
+ 
+//     BenchmarkMetrics row;
+//     bm_init_row(&row);
+//     row.model_config_index = config_index;
+//     row.quant_type         = quant_is_int8 ? "int8" : "float32";
+//     row.model_size_bytes   = BENCHMARK_MODEL_SIZES[slot];
+//     row.ticks_per_second   = tps;
+ 
+//     // --- buffers for this config (shared shape across quant types) ---
+//     float *input_buffer = nullptr, *output_buffer = nullptr, *correct_buffer = nullptr;
+//     int   *input_sizes  = nullptr, *output_sizes  = nullptr;
+//     int    total_input = 0, total_output = 0;
+ 
+//     // -----------------------------------------------------------------------
+//     // PASS 1 — PSRAM. Always runs first; this is where we MEASURE the arena.
+//     // -----------------------------------------------------------------------
+//     allocateInputandOutputbuffers(&input_buffer, &output_buffer, &correct_buffer,
+//                                   &input_sizes, &output_sizes, data,
+//                                   &total_input, &total_output, config_index,
+//                                   /*usePSRAM=*/true);
+ 
+//     bh->init_model(slot, /*usePSRAM=*/true,
+//                    BENCHMARK_INPUT_SIZES[config_index],
+//                    BENCHMARK_OUTPUT_SIZES[config_index],
+//                    csv, cap);   // init_model still appends its own lines; harmless,
+//                                 // or strip those snprintf calls for pure CSV.
+ 
+//     size_t measured_arena = 0;
+//     if (bh->model_ok()) {
+//         measured_arena      = bh->arena_used();
+//         row.arena_used_bytes = measured_arena;
+ 
+//         row.psram_inf_ticks = bh->run_inference_ticks(input_buffer, input_sizes,
+//                                                        output_buffer, output_sizes);
+//         row.psram_inf_us    = bm_ticks_to_us(row.psram_inf_ticks, tps);
+//         row.psram_mse       = BenchmarkHandle::compute_mse(output_buffer, total_output,
+//                                                            correct_buffer);
+//         row.psram_sqnr_db = BenchmarkHandle::compute_sqnr_db(output_buffer, total_output, correct_buffer);
+//         row.sram_sqnr_db  = BenchmarkHandle::compute_sqnr_db(output_buffer, total_output, correct_buffer);
+//     } else {
+//         row.sram_skip_reason = "psram_init_failed";
+//     }
+//     bh->clear_models();
+ 
+//     // -----------------------------------------------------------------------
+//     // DECISION — measure-then-decide, replaces the old size > 150000 check.
+//     // -----------------------------------------------------------------------
+//     SramFitness fit = sram_fitness_check(/*model_copy=*/row.model_size_bytes,
+//                                          /*arena=*/measured_arena);
+//     row.sram_eligible = fit.eligible;
+//     if (!fit.eligible && row.sram_skip_reason[0] == '\0') {
+//         row.sram_skip_reason = fit.reason;   // e.g. "arena_exceeds_largest_block"
+//     }
+ 
+//     // Free the PSRAM buffers before re-allocating in SRAM for pass 2.
+//     heap_caps_free(input_buffer);   input_buffer   = nullptr;
+//     heap_caps_free(output_buffer);  output_buffer  = nullptr;
+//     heap_caps_free(correct_buffer); correct_buffer = nullptr;
+//     delete[] input_sizes;  input_sizes  = nullptr;
+//     delete[] output_sizes; output_sizes = nullptr;
+//     total_input = total_output = 0;
+ 
+//     // -----------------------------------------------------------------------
+//     // PASS 2 — SRAM, only if eligible. Allocation is the final arbiter.
+//     // -----------------------------------------------------------------------
+//     if (fit.eligible) {
+//         allocateInputandOutputbuffers(&input_buffer, &output_buffer, &correct_buffer,
+//                                       &input_sizes, &output_sizes, data,
+//                                       &total_input, &total_output, config_index,
+//                                       /*usePSRAM=*/false);
+ 
+//         bh->init_model(slot, /*usePSRAM=*/false,
+//                        BENCHMARK_INPUT_SIZES[config_index],
+//                        BENCHMARK_OUTPUT_SIZES[config_index],
+//                        csv, cap);
+ 
+//         if (bh->model_ok()) {
+//             row.sram_ran        = 1;
+//             row.sram_inf_ticks  = bh->run_inference_ticks(input_buffer, input_sizes,
+//                                                           output_buffer, output_sizes);
+//             row.sram_inf_us     = bm_ticks_to_us(row.sram_inf_ticks, tps);
+//             row.sram_mse        = BenchmarkHandle::compute_mse(output_buffer, total_output,
+//                                                               correct_buffer);
+//         } else {
+//             // Passed the predictive check but allocation/AllocateTensors failed.
+//             row.sram_ran         = 0;
+//             row.sram_skip_reason = "sram_alloc_failed_after_eligible";
+//         }
+//         bh->clear_models();
+ 
+//         free(input_buffer);   input_buffer   = nullptr;
+//         free(output_buffer);  output_buffer  = nullptr;
+//         free(correct_buffer); correct_buffer = nullptr;
+//         delete[] input_sizes;  input_sizes  = nullptr;
+//         delete[] output_sizes; output_sizes = nullptr;
+//     }
+ 
+//     // --- emit the row ---
+//     *csv_len = (int)strlen(csv);
+//     *csv_len += bm_csv_row(csv + *csv_len, cap - *csv_len, &row);
+// }
+ 
+// void run_testing_benchmark_csv() {
+//     BenchmarkHandle* bh = new BenchmarkHandle("benchmark_models");
+ 
+//     ModelFlash* mf = new ModelFlash();
+//     const uint8_t** data = new const uint8_t*[TENSOR_COUNT];
+//     mf->allocatePointerOnFlash("benchmark_data", data, TENSOR_COUNT, OFFSETS,
+//                                OFFSET_TYPE::FLOAT32);
+ 
+//     // Capture the time base once. Confirmed 1000000 (1 tick = 1 us) on this board.
+//     const uint32_t tps = tflite::ticks_per_second();
+ 
+//     static char csv[REPORT_MAX] = {0};
+//     int len = bm_csv_header(csv, REPORT_MAX);
+ 
+//     for (int i = 0; i < (int)(BENCHMARK_MODEL_COUNT / 2); i++) {
+//         benchmark_one_quant(bh, data, i, /*int8=*/false, tps, csv, REPORT_MAX, &len);
+//         vTaskDelay(10 / portTICK_PERIOD_MS);
+//         benchmark_one_quant(bh, data, i, /*int8=*/true,  tps, csv, REPORT_MAX, &len);
+//         vTaskDelay(10 / portTICK_PERIOD_MS);
+//     }
+ 
+//     // Bracketed so you can reliably carve the CSV out of the serial log.
+//     printf("\n===BENCHMARK_CSV_BEGIN===\n%s===BENCHMARK_CSV_END===\n", csv);
+ 
+//     delete[] data;
+//     delete mf;
+//     delete bh;
+// }
+
 // change input sizes and output size to be double pointers
 void allocateInputandOutputbuffers(float** input_buffer, float** output_buffer, float** correct_buffer,
 int** input_sizes, int** output_sizes, const uint8_t** data,int* total_input_size, int* total_output_size,int index
@@ -653,182 +971,143 @@ int** input_sizes, int** output_sizes, const uint8_t** data,int* total_input_siz
 
     
 }
+static void benchmark_one_quant(BenchmarkHandle* bh,
+                                const uint8_t** data,
+                                int config_index,
+                                bool quant_is_int8,
+                                uint32_t tps,
+                                char* csv, int cap, int* csv_len) {
 
-
-void run_testing_benchmark()
-{
-    BenchmarkHandle* benchmark_handle = new BenchmarkHandle("benchmark_models");
+    const int slot = config_index * 2 + (quant_is_int8 ? 1 : 0);
+ 
+    BenchmarkMetrics row;
+    bm_init_row(&row);
+    row.model_config_index = config_index;
+    row.quant_type         = quant_is_int8 ? "int8" : "float32";
+    row.model_size_bytes   = BENCHMARK_MODEL_SIZES[slot];
+    row.ticks_per_second   = tps;
+ 
     
-    // We need to now do a for loop for all models 
-
-    // Step 1: Pull the data from lsl into the windowed buffer
-    // Step 2: Run inference on the windowed buffer which should put the appropriate output into the output buffer
-    // Step 3: Push the output data buffer to the LSL outlet    
-    char final_report[REPORT_MAX] = {0};
-    int final_report_size = strlen(final_report);
-
-    ModelFlash* mf = new ModelFlash();
-
-    const uint8_t** data = new const uint8_t*[TENSOR_COUNT];
-    // need to convert OFFSET from float count to actual byte size
-    bool success = mf->allocatePointerOnFlash("benchmark_data", data, TENSOR_COUNT, OFFSETS, OFFSET_TYPE::FLOAT32);
-    
-    float mse = 0;
-
-    float* input_buffer;
-    float* output_buffer;
-    float* correct_buffer;
-    int* input_sizes;
-    int* output_sizes;
-
-    int total_input_size = 0;
-    int total_output_size = 0;
-
-    for(int i =0; i < (int)(BENCHMARK_MODEL_COUNT / 2); i++)
-    {
-        int index = (i * 2);
-        allocateInputandOutputbuffers(&input_buffer, &output_buffer, &correct_buffer, &input_sizes, &output_sizes,
-             data, &total_input_size, &total_output_size, i, true);
-
-        final_report_size = strlen(final_report);
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Index %d\nQuant Type: Float32\n", i);
-        
-        benchmark_handle->init_model(index, true, BENCHMARK_INPUT_SIZES[i], BENCHMARK_OUTPUT_SIZES[i], final_report, final_report_size);
-
-        benchmark_handle->run_inference(input_buffer, input_sizes, output_buffer, output_sizes, final_report, final_report_size);
-       
-        mse = benchmark_handle->print_output(output_buffer, total_output_size, correct_buffer);
-        
-        benchmark_handle->clear_models();
-
-        final_report_size = strlen(final_report);
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: %0.4f\n\n", mse);
-        
-        // Now for int8
-        final_report_size = strlen(final_report);
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Index %d\nQuant Type: Int8\n", i);
-        
-        benchmark_handle->init_model(index + 1, true, BENCHMARK_INPUT_SIZES[i], BENCHMARK_OUTPUT_SIZES[i], final_report, final_report_size);
-
-        benchmark_handle->run_inference(input_buffer, input_sizes, output_buffer, output_sizes, final_report, final_report_size);
-       
-        mse = benchmark_handle->print_output(output_buffer, total_output_size, correct_buffer);
-
-        benchmark_handle->clear_models();
-
-        final_report_size = strlen(final_report);
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: %0.4f\n\n", mse);
-
-        heap_caps_free(input_buffer);
-        input_buffer = nullptr;
-        heap_caps_free(output_buffer);
-        output_buffer = nullptr;
-        heap_caps_free(correct_buffer);
-        correct_buffer = nullptr;
-
-        delete[] input_sizes;
-        input_sizes = nullptr;
-        delete[] output_sizes;
-        output_sizes = nullptr;
-
-        total_input_size = 0;
-        total_output_size = 0;
-        
-        if (BENCHMARK_MODEL_SIZES[index] > 150000 || BENCHMARK_MODEL_SIZES[index + 1] > 150000)
-        {
-            // Don't allocate on SRAM
-            final_report_size = strlen(final_report);
-            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Index %d\nQuant Type: Float32\n", i);
-            
-            final_report_size = strlen(final_report);
-            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model Model_Size: TOO_LARGE B\n");
-
-            final_report_size = strlen(final_report);
-            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model Arena_Size: TOO_LARGE B\n");
-
-            final_report_size = strlen(final_report);
-            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model init: TOO_LARGE \xCE\xBCs, TOO_LARGE ms\n");
-
-            final_report_size = strlen(final_report);
-            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model Inf: TOO_LARGE \xCE\xBCs, TOO_LARGE ms\n");
-            
-            final_report_size = strlen(final_report);
-            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: TOO_LARGE \n\n");
-
-            // Don't allocate on SRAM
-            final_report_size = strlen(final_report);
-            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Index %d\nQuant Type: Int8\n", i);
-            
-            final_report_size = strlen(final_report);
-            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model Model_Size: TOO_LARGE B\n");
-
-            final_report_size = strlen(final_report);
-            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model Arena_Size: TOO_LARGE B\n");
-
-            final_report_size = strlen(final_report);
-            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model init: TOO_LARGE \xCE\xBCs, TOO_LARGE ms\n");
-
-            final_report_size = strlen(final_report);
-            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "0_Model Inf: TOO_LARGE \xCE\xBCs, TOO_LARGE ms\n");
-            
-            final_report_size = strlen(final_report);
-            snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: TOO_LARGE \n\n");
-            
-            continue;
-        }
-        // TEST with normal ram
-        allocateInputandOutputbuffers(&input_buffer, &output_buffer, &correct_buffer, &input_sizes, &output_sizes,
-             data, &total_input_size, &total_output_size, i, false);
-
-        final_report_size = strlen(final_report);
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Index %d\nQuant Type: Float32\n", i);
-        
-        benchmark_handle->init_model(index, false, BENCHMARK_INPUT_SIZES[i], BENCHMARK_OUTPUT_SIZES[i], final_report, final_report_size);
-
-        benchmark_handle->run_inference(input_buffer, input_sizes, output_buffer, output_sizes, final_report, final_report_size);
-       
-        mse = benchmark_handle->print_output(output_buffer, total_output_size, correct_buffer);
-        
-        benchmark_handle->clear_models();
-
-        final_report_size = strlen(final_report);
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: %0.4f\n\n", mse);
-        vTaskDelay(10 / portTICK_PERIOD_MS); // Adjust delay as needed for timing
-
-        final_report_size = strlen(final_report);
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "Model Index %d\nQuant Type: Int8\n", i);
-        
-        benchmark_handle->init_model(index + 1, false, BENCHMARK_INPUT_SIZES[i], BENCHMARK_OUTPUT_SIZES[i], final_report, final_report_size);
-
-        benchmark_handle->run_inference(input_buffer, input_sizes, output_buffer, output_sizes, final_report, final_report_size);
-       
-        mse = benchmark_handle->print_output(output_buffer, total_output_size, correct_buffer);
-
-        benchmark_handle->clear_models();
-
-        final_report_size = strlen(final_report);
-        snprintf(final_report + final_report_size, REPORT_MAX - final_report_size, "MSE: %0.4f\n\n", mse);
-
-        free(input_buffer);
-        input_buffer = nullptr;
-        free(output_buffer);
-        output_buffer = nullptr;
-        free(correct_buffer);
-        correct_buffer = nullptr;
-
-        delete[] input_sizes;
-        input_sizes = nullptr;
-        delete[] output_sizes;
-        output_sizes = nullptr;
-
-        total_input_size = 0;
-        total_output_size = 0;
+    float *input_buffer = nullptr, *output_buffer = nullptr, *correct_buffer = nullptr;
+    int   *input_sizes  = nullptr, *output_sizes  = nullptr;
+    int    total_input = 0, total_output = 0;
+ 
+    // ----- PASS 1: PSRAM (always). Discovers the true arena size. -----
+    allocateInputandOutputbuffers(&input_buffer, &output_buffer, &correct_buffer,
+                                  &input_sizes, &output_sizes, data,
+                                  &total_input, &total_output, config_index,
+                                  /*usePSRAM=*/true);
+ 
+    // No arena_bytes arg -> uses the generous fixed CONFIG_ARENA_SIZE so TFLite
+    // can allocate and we can read arena_used() afterwards.
+    bh->init_model(slot, /*usePSRAM=*/true,
+                   BENCHMARK_INPUT_SIZES[config_index],
+                   BENCHMARK_OUTPUT_SIZES[config_index],
+                   csv, cap);
+ 
+    size_t measured_arena = 0;
+    if (bh->model_ok()) {
+        measured_arena       = bh->arena_used();
+        row.arena_used_bytes = measured_arena;
+ 
+        row.psram_inf_ticks = bh->run_inference_ticks(input_buffer, input_sizes,
+                                                      output_buffer, output_sizes);
+        row.psram_inf_us    = bm_ticks_to_us(row.psram_inf_ticks, tps);
+        row.psram_mse       = BenchmarkHandle::compute_mse(output_buffer, total_output,
+                                                           correct_buffer);
+        row.psram_sqnr_db   = BenchmarkHandle::compute_sqnr_db(output_buffer, total_output,
+                                                               correct_buffer);
+    } else {
+        row.sram_skip_reason = "psram_init_failed";
     }
-
-    ESP_LOGI("FINAL REPORT", "%s", final_report);
+    bh->clear_models();
+ 
+    // ----- DECISION: measure-then-decide -----
+    SramFitness fit = sram_fitness_check(/*model_copy=*/row.model_size_bytes,
+                                         /*arena=*/measured_arena);
+    row.sram_eligible = fit.eligible;
+    if (!fit.eligible && row.sram_skip_reason[0] == '\0') {
+        row.sram_skip_reason = fit.reason;
+    }
+ 
+    heap_caps_free(input_buffer);   input_buffer   = nullptr;
+    heap_caps_free(output_buffer);  output_buffer  = nullptr;
+    heap_caps_free(correct_buffer); correct_buffer = nullptr;
+    delete[] input_sizes;  input_sizes  = nullptr;
+    delete[] output_sizes; output_sizes = nullptr;
+    total_input = total_output = 0;
+ 
+    // ----- PASS 2: SRAM, only if eligible. Right-sized arena. -----
+    if (fit.eligible) {
+        allocateInputandOutputbuffers(&input_buffer, &output_buffer, &correct_buffer,
+                                      &input_sizes, &output_sizes, data,
+                                      &total_input, &total_output, config_index,
+                                      /*usePSRAM=*/false);
+ 
+        // Right-size the SRAM arena from the PSRAM-measured requirement + margin,
+        // instead of a fixed 180 KB. This is what stops repeated oversized
+        // requests from fragmenting internal RAM and starving later models.
+        const int sram_arena = (int)measured_arena + SRAM_FITNESS_MARGIN_BYTES;
+ 
+        bh->init_model(slot, /*usePSRAM=*/false,
+                       BENCHMARK_INPUT_SIZES[config_index],
+                       BENCHMARK_OUTPUT_SIZES[config_index],
+                       csv, cap, /*arena_bytes=*/sram_arena);
+ 
+        if (bh->model_ok()) {
+            row.sram_ran       = 1;
+            row.sram_inf_ticks = bh->run_inference_ticks(input_buffer, input_sizes,
+                                                         output_buffer, output_sizes);
+            row.sram_inf_us    = bm_ticks_to_us(row.sram_inf_ticks, tps);
+            row.sram_mse       = BenchmarkHandle::compute_mse(output_buffer, total_output,
+                                                             correct_buffer);
+            row.sram_sqnr_db   = BenchmarkHandle::compute_sqnr_db(output_buffer, total_output,
+                                                                 correct_buffer);
+        } else {
+            row.sram_ran         = 0;
+            row.sram_skip_reason = "sram_alloc_failed_after_eligible";
+        }
+        bh->clear_models();
+ 
+        free(input_buffer);   input_buffer   = nullptr;
+        free(output_buffer);  output_buffer  = nullptr;
+        free(correct_buffer); correct_buffer = nullptr;
+        delete[] input_sizes;  input_sizes  = nullptr;
+        delete[] output_sizes; output_sizes = nullptr;
+    }
+ 
+    // ----- emit row -----
+    *csv_len = (int)strlen(csv);
+    *csv_len += bm_csv_row(csv + *csv_len, cap - *csv_len, &row);
 }
 
-
+void run_testing_benchmark_csv() {
+    BenchmarkHandle* bh = new BenchmarkHandle("benchmark_models");
+ 
+    ModelFlash* mf = new ModelFlash();
+    const uint8_t** data = new const uint8_t*[TENSOR_COUNT];
+    mf->allocatePointerOnFlash("benchmark_data", data, TENSOR_COUNT, OFFSETS,
+                               OFFSET_TYPE::FLOAT32);
+ 
+    const uint32_t tps = tflite::ticks_per_second();
+ 
+    static char csv[REPORT_MAX] = {0};
+    int len = bm_csv_header(csv, REPORT_MAX);
+ 
+    for (int i = 0; i < (int)(BENCHMARK_MODEL_COUNT / 2); i++) {
+        benchmark_one_quant(bh, data, i, /*int8=*/false, tps, csv, REPORT_MAX, &len);
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+        benchmark_one_quant(bh, data, i, /*int8=*/true,  tps, csv, REPORT_MAX, &len);
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+ 
+    printf("\n===BENCHMARK_CSV_BEGIN===\n%s===BENCHMARK_CSV_END===\n", csv);
+ 
+    delete[] data;
+    delete mf;
+    delete bh;
+    
+}
 void test_lsl()
 {
     LSLHandle* main_handle = new LSLHandle((int)MAIN_WINDOW_LENS[0]);
@@ -849,8 +1128,9 @@ extern "C" void app_main(void) {
     
     //run_testing_benchmark();
     //run_optimized();
-
+    //printf("ticks_per_second = %lu\n", (unsigned long)tflite::ticks_per_second());
     run_app();
 
     //run_one_app();
+    //run_testing_benchmark_csv();
 }

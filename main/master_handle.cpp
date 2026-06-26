@@ -97,8 +97,8 @@ double MasterHandle::print_output(const float* output_window, int output_size, c
 
         // Show enough digits to actually see the residual: scientific notation
         // so small mismatches are never rounded away on screen.
-        // printf("(%d) out=% .6lf  ref=% .6lf  diff=% .3lf\n",
-        //         j, output_window[j], correct_window[j], diff);
+        printf("(%d) out=% .6lf  ref=% .6lf  diff=% .3lf\n",
+               j, output_window[j], correct_window[j], diff);
     }
     //printf("==============================\n");
 
@@ -358,7 +358,6 @@ void MasterHandle::stage1_first_a_int8(const float* input_ptr, int input_size,
     bool success = m_model[0]->predict(input_ptr, input_lengths_a, out_int8, output_lengths_a);
     // read profiler ticks BEFORE clearing
     wt->infa_ticks = m_model[0]->getTotalTicks();
-    m_model[0]->getTotalProfileTimePerOp();
     if (!success) {
         ESP_LOGE("MASTERHandle", "First model inference failed");
     }

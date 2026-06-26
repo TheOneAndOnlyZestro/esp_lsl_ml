@@ -6,6 +6,119 @@
 #include "esp_log.h"
 static const char *H = "HEAP";
 
+// Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena_size, 
+//         size_t input_size, size_t output_size, bool usePSRAM,char* report_buffer, int size)
+//         :profiler()
+// {
+//     mflash = model_flash;
+//     this->arena_size = arena_size;
+//     this->inPSRAM = usePSRAM;
+//     this->input_size = input_size;
+//     this->output_size = output_size;
+
+//     tflite::InitializeTarget();
+    
+//     //initialize profiler
+
+//     tflite_model = tflite::GetModel(model_data);
+//     if (tflite_model->version() != TFLITE_SCHEMA_VERSION) {
+//         printf("Model schema mismatch!\n");
+//         return;
+//     }
+
+//     // 1. Allocate arena on the heap to avoid stack overflow
+//     if(this->inPSRAM)
+//         tensor_arena = mflash->allocatePointerOnPSRAM(arena_size);
+//     else
+//         tensor_arena = (uint8_t*)malloc(arena_size);
+//     if (tensor_arena == nullptr) {
+//         printf("Failed to allocate %d bytes for tensor arena!\n", arena_size);
+//         return;
+//     }
+
+//     // 2. Register op
+//     resolver.AddFullyConnected();
+//     resolver.AddConv2D();
+//     resolver.AddStridedSlice();
+//     resolver.AddDepthwiseConv2D();
+//     resolver.AddReshape();
+//     resolver.AddPack();
+//     resolver.AddShape();
+//     resolver.AddSoftmax();
+//     resolver.AddQuantize();
+//     resolver.AddDequantize();
+//     resolver.AddMul();
+//     resolver.AddAdd();
+//     resolver.AddTanh();
+//     resolver.AddSplit();
+//     resolver.AddConcatenation();
+//     resolver.AddLogistic();
+//     resolver.AddUnidirectionalSequenceLSTM();
+//     resolver.AddFill();
+//     resolver.AddUnpack();
+//     resolver.AddTranspose();
+//     resolver.AddGather();
+//     resolver.AddMaxPool2D();
+//     resolver.AddMean();
+//     resolver.AddElu();
+//     resolver.AddPad();
+//     resolver.AddPadV2();
+//     resolver.AddExp();
+//     resolver.AddGreaterEqual();
+//     resolver.AddSelectV2();
+//     resolver.AddSlice();
+//     resolver.AddSub();
+//     resolver.AddSelect();
+//     resolver.AddRelu();
+//     resolver.AddBroadcastTo();
+
+//     //printf("GOING TO ALLOCATE INTERPRETER NOW\n");
+//     // 3. Build interpreter
+//     interpreter = new tflite::MicroInterpreter(
+//         tflite_model, resolver, tensor_arena, arena_size,
+//         nullptr, &profiler, false);
+    
+    
+        
+//     if (interpreter->AllocateTensors() != kTfLiteOk) {
+//         printf("AllocateTensors() failed!\n");
+//         return;
+//     }
+    
+//     // int report_size = strlen(report_buffer);
+//     // snprintf(report_buffer + report_size, size - report_size, "0_Model Arena_Size: %zuB\n",
+//     // interpreter->arena_used_bytes());
+//     //printf("TENSORS are ready\n");
+    
+//     input = new TfLiteTensor*[input_size];
+//     output = new TfLiteTensor*[output_size];
+
+//     for(int i = 0; i < this->input_size; i++) {
+//         printf("Input(%d) Type: %d \n", i, interpreter->input(i)->type);
+//         printf("Input(%d) Dims: %d \n", i, interpreter->input(i)->dims->size);
+//         for (int j =0; j < interpreter->input(i)->dims->size; j++)
+//         {
+//             printf("Input(%d) Dim (%d): \n", i, interpreter->input(i)->dims->data[j]);
+//         }
+//         input[i] = interpreter->input(i);
+//     }
+
+//     for(int i = 0; i < this->output_size; i++) {
+//         printf("Output(%d) Type: %d \n", i, interpreter->output(i)->type);
+//         printf("Output(%d) Dims: %d \n", i, interpreter->output(i)->dims->size);
+//         for (int j =0; j < interpreter->output(i)->dims->size; j++)
+//         {
+//             printf("Output(%d) Dim (%d): \n", i, interpreter->output(i)->dims->data[j]);
+//         }
+//         output[i] = interpreter->output(i);
+//     }
+
+//     printf("Setup complete. Arena used: %d bytes\n", interpreter->arena_used_bytes());
+
+//     initialized = true;
+// }
+
+// Owning constructor — allocates its own arena (unchanged external behaviour).
 Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena_size, 
         size_t input_size, size_t output_size, bool usePSRAM,char* report_buffer, int size)
         :profiler()
@@ -15,10 +128,9 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
     this->inPSRAM = usePSRAM;
     this->input_size = input_size;
     this->output_size = output_size;
+    this->owns_arena = true;
 
     tflite::InitializeTarget();
-    
-    //initialize profiler
 
     tflite_model = tflite::GetModel(model_data);
     if (tflite_model->version() != TFLITE_SCHEMA_VERSION) {
@@ -26,7 +138,7 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
         return;
     }
 
-    // 1. Allocate arena on the heap to avoid stack overflow
+    // Allocate arena on the heap to avoid stack overflow
     if(this->inPSRAM)
         tensor_arena = mflash->allocatePointerOnPSRAM(arena_size);
     else
@@ -35,6 +147,44 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
         printf("Failed to allocate %d bytes for tensor arena!\n", arena_size);
         return;
     }
+
+    init_common(model_data, report_buffer, size);
+}
+
+// Borrowing constructor — uses a caller-owned arena; must NOT free it.
+Model::Model(ModelFlash* model_flash, const unsigned char* model_data,
+        uint8_t* external_arena, int arena_size,
+        size_t input_size, size_t output_size, bool usePSRAM, char* report_buffer, int size)
+        :profiler()
+{
+    mflash = model_flash;
+    this->arena_size = arena_size;
+    this->inPSRAM = usePSRAM;
+    this->input_size = input_size;
+    this->output_size = output_size;
+    this->owns_arena = false;          // borrowed: destructor leaves it alone
+
+    tflite::InitializeTarget();
+
+    tflite_model = tflite::GetModel(model_data);
+    if (tflite_model->version() != TFLITE_SCHEMA_VERSION) {
+        printf("Model schema mismatch!\n");
+        return;
+    }
+
+    if (external_arena == nullptr) {
+        printf("Borrowing ctor got null arena!\n");
+        return;
+    }
+    tensor_arena = external_arena;     // borrow, no allocation
+
+    init_common(model_data, report_buffer, size);
+}
+
+// Shared setup: ops, interpreter, AllocateTensors, tensor binding.
+void Model::init_common(const unsigned char* model_data, char* report_buffer, int size)
+{
+    (void)model_data; (void)report_buffer; (void)size;
 
     // 2. Register op
     resolver.AddFullyConnected();
@@ -72,24 +222,16 @@ Model::Model(ModelFlash* model_flash, const unsigned char* model_data, int arena
     resolver.AddRelu();
     resolver.AddBroadcastTo();
 
-    //printf("GOING TO ALLOCATE INTERPRETER NOW\n");
     // 3. Build interpreter
     interpreter = new tflite::MicroInterpreter(
         tflite_model, resolver, tensor_arena, arena_size,
         nullptr, &profiler, false);
-    
-    
-        
+
     if (interpreter->AllocateTensors() != kTfLiteOk) {
         printf("AllocateTensors() failed!\n");
         return;
     }
-    
-    // int report_size = strlen(report_buffer);
-    // snprintf(report_buffer + report_size, size - report_size, "0_Model Arena_Size: %zuB\n",
-    // interpreter->arena_used_bytes());
-    //printf("TENSORS are ready\n");
-    
+
     input = new TfLiteTensor*[input_size];
     output = new TfLiteTensor*[output_size];
 
@@ -124,12 +266,13 @@ Model::~Model() {
         interpreter = nullptr;
     }
     if (tensor_arena != nullptr) {
-        if(this->inPSRAM)
-            heap_caps_free(tensor_arena);
-        else
-            free(tensor_arena);
-            
-        tensor_arena = nullptr;
+        if (tensor_arena != nullptr && owns_arena) {   // only free if we allocated it
+            if(this->inPSRAM)
+                heap_caps_free(tensor_arena);
+            else
+                free(tensor_arena);
+        }
+        tensor_arena = nullptr;   // always clear the pointer; borrowed memory persists
     }
     delete[] input;   input = nullptr;
     delete[] output;  output = nullptr;
