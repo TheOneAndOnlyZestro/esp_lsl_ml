@@ -6,8 +6,19 @@
 #include "weights.h"
 
 #include "lsl_handle.h"
-#include "binary_manifests/four_models_old_model_real_y/manifest_0.h"
-#include "binary_manifests/four_models_old_model/models_manifest_0.h"
+//#include "binary_manifests/four_models_step_500/manifest_0.h"
+// #include "binary_manifests/better_trials/trial_15/manifest_0.h"
+// #include "binary_manifests/calibrated_better/models_manifest_0.h"
+
+// #include "binary_manifests/trials_768/trial_test_25/manifest_0.h"
+// #include "binary_manifests/calibrated_768/models_manifest_0.h"
+
+//#include "binary_manifests/multiple_train_trials/manifest_0.h"
+//#include "binary_manifests/calibrated_768/models_manifest_0.h"
+
+#include "binary_manifests/models_verification/manifest.h"
+#include "binary_manifests/models_verification/models_manifest_0.h"
+
 #include "tensorflow/lite/micro/micro_time.h"
 
 #include "benchmark_metrics.h"
@@ -356,7 +367,7 @@ static double run_inference_window(
 {
     const int win_start_t = win_count * input_win_len;   // start time of this window (samples)
     const int out_start_t = win_count * output_win_len;  // same window counter as input
-    ESP_LOGI("MAIN", "Win: %d", win_count);
+    //ESP_LOGI("MAIN", "Win: %d", win_count);
     //memory copy from flash to sram arrays
     // memcpy(&input_trial[in_win * CONFIG_INPUT_CHANNELS],
     // &x_data[0][in_win * CONFIG_INPUT_CHANNELS * sizeof(float)], input_size * sizeof(float));
@@ -390,12 +401,22 @@ static double run_inference_window(
         intermediate_size, first_out_len,
         wt, trial);
 
-    double current_mse = master_handle->print_output(
+    // double current_mse = master_handle->print_output(
+    //     &output_trial[0],
+    //     output_size,
+    //     &correct_trial[0]);
+    double current_mse;double current_mae;double current_nmse;
+    master_handle->print_output(
         &output_trial[0],
         output_size,
-        &correct_trial[0]);
+        &correct_trial[0],
+        current_mse,
+        current_mae,
+        current_nmse);
 
     wt->mse = current_mse;
+    wt->mae = current_mae;
+    wt->nmse = current_nmse;
     return current_mse;
 }
 
@@ -500,26 +521,41 @@ void run_app()
 
         // 0,1,2,3. 4,5,6,7
         //trying with only the first one being int8
-        const int idx_a    = i*8 + 0;
-        const int idx_b    = i*8 + 1;
+        const int idx_a    = i*8 + 4;
+        const int idx_b    = i*8 + 5;
         const int idx_lstm = i*8 + 2;
         const int idx_reg  = i*8 + 3;
+
+        // const int idx_a    = i*8 + 0;
+        // const int idx_b    = i*8 + 1;
+        // const int idx_lstm = i*8 + 2;
+        // const int idx_reg  = i*8 + 3;
         master_handle->init_models(idx_a, idx_b, idx_lstm, idx_reg,
                                    true, final_report, REPORT_MAX);
         master_handle->init_optim_lstm("lstm_weights");
         // Pick the per-stage quant variants to match the init_models indices above.
         // The labels carried here are what the CSV prints for this trial.
         MasterHandle::QuantConfig qc;
-        qc.first_a_is_int8 = false;
+        qc.first_a_is_int8 = true;
         qc.use_optim_lstm = false;
         qc.use_c16 = false;
-        qc.first_a    = &MasterHandle::stage1_first_a_f32;
-        qc.label_a    = "f32";
-        qc.first_b    = &MasterHandle::stage2_first_b_f32; 
-        qc.label_b    = "f32";
+        qc.first_a    = &MasterHandle::stage1_first_a_int8;
+        qc.label_a    = "int8";
+        qc.first_b    = &MasterHandle::stage2_first_b_int8; 
+        qc.label_b    = "int8";
         qc.lstm_step  = &MasterHandle::lstm_step_f32;      qc.label_lstm = "f32";
         qc.reg_step   = &MasterHandle::regressor_step_f32; qc.label_reg  = "f32";
 
+        // MasterHandle::QuantConfig qc;
+        // qc.first_a_is_int8 = false;
+        // qc.use_optim_lstm = false;
+        // qc.use_c16 = false;
+        // qc.first_a    = &MasterHandle::stage1_first_a_f32;
+        // qc.label_a    = "f32";
+        // qc.first_b    = &MasterHandle::stage2_first_b_f32; 
+        // qc.label_b    = "f32";
+        // qc.lstm_step  = &MasterHandle::lstm_step_f32;      qc.label_lstm = "f32";
+        // qc.reg_step   = &MasterHandle::regressor_step_f32; qc.label_reg  = "f32";
         
         // ---- per-trial accumulator ----
         TrialStats trial;
@@ -593,7 +629,149 @@ void run_app()
 
 }
 
+// TRIAL SWEEP TEST
+// void run_app_trial_sweep()
+// {
+//     char final_report[REPORT_MAX] = {0};
+//     ModelFlash* mf = new ModelFlash();
 
+//     // One X and one Y pointer per trial now (was per-config).
+//     const uint8_t** x_data = new const uint8_t*[DATA_TRIAL_COUNT];
+//     const uint8_t** y_data = new const uint8_t*[DATA_TRIAL_COUNT];
+
+//     mf->allocatePointerOnFlashXY_MultiTrial(   // was allocatePointerOnFlashXY
+//         "benchmark_data",
+//         X_REGION_BYTE_OFFSET, x_data,
+//         Y_REGION_BYTE_OFFSET, y_data,
+//         DATA_TRIAL_COUNT,
+//         MAIN_X_OFFSETS, MAIN_Y_OFFSETS,
+//         OFFSET_TYPE::FLOAT32);
+
+//     uint32_t max_output_size = 0;
+//     for (int t = 0; t < DATA_TRIAL_COUNT; t++)
+//         if (MAIN_Y_SIZES[t] > max_output_size) max_output_size = MAIN_Y_SIZES[t];
+
+//     uint32_t max_input_size = 0;
+//     for (int t = 0; t < DATA_TRIAL_COUNT; t++)
+//         if (MAIN_X_SIZES[t] > max_input_size) max_input_size = MAIN_X_SIZES[t];
+
+//     float* output_trial  = new float[max_output_size];
+//     float* correct_trial = new float[max_output_size];
+//     float* input_trial   = new float[max_input_size];
+
+//     const uint8_t** models_on_flash = new const uint8_t*[MODEL_COUNT];
+//     bool success = mf->allocatePointerOnFlash("benchmark_models", models_on_flash,
+//         MODEL_COUNT, MODEL_OFFSETS, OFFSET_TYPE::INT8);
+//     if (!success) { ESP_LOGE("MAIN", "Could not initialize mmaped pointers"); return; }
+
+//     MasterHandle* master_handle = new MasterHandle(
+//         MODEL_COUNT, models_on_flash, INPUT_SIZES, OUTPUT_SIZES, MODEL_SIZES);
+
+//     trial_report_header(final_report, REPORT_MAX);
+
+//     // ---- Config is FIXED (baked into the manifest). Derive its params once. ----
+//     const int cfg               = DATA_CONFIG_INDEX;
+//     const int input_win_len     = (int)MAIN_WINDOW_LEN;
+//     const int input_size        = (int)MAIN_WINDOW_LEN * CONFIG_INPUT_CHANNELS;
+//     const int output_win_len    = (int)MAIN_OUT_LEN;
+//     const int output_size       = (int)MAIN_OUT_LEN * CONFIG_OUTPUT_CHANNELS;
+//     const int intermediate_size = (int)MAIN_INTERMEDIATE_SIZE;
+//     const int first_out_len     = (int)MAIN_OUT_LEN;
+//     const int state_size        = 2 * LSTM_FEATURES;
+//     const int lstm_step         = intermediate_size / LSTM_FEATURES;
+
+//     const int idx_a    = cfg*8 + 4;
+//     const int idx_b    = cfg*8 + 5;
+//     const int idx_lstm = cfg*8 + 2;
+//     const int idx_reg  = cfg*8 + 3;
+
+//     master_handle->init_models(idx_a, idx_b, idx_lstm, idx_reg,
+//                                true, final_report, REPORT_MAX);
+//     master_handle->init_optim_lstm("lstm_weights");
+
+//     MasterHandle::QuantConfig qc;
+//     qc.first_a_is_int8 = true;
+//     qc.use_optim_lstm  = false;
+//     qc.use_c16         = false;
+//     qc.first_a   = &MasterHandle::stage1_first_a_int8; qc.label_a   = "int8";
+//     qc.first_b   = &MasterHandle::stage2_first_b_int8; qc.label_b   = "int8";
+//     qc.lstm_step = &MasterHandle::lstm_step_f32;       qc.label_lstm = "f32";
+//     qc.reg_step  = &MasterHandle::regressor_step_f32;  qc.label_reg  = "f32";
+
+//     // Fixed length => derive per-trial sample/out lengths from trial 0 (all equal).
+//     const int trial_len_samples = (int)(MAIN_X_SIZES[0] / CONFIG_INPUT_CHANNELS);
+//     const int out_trial_len     = (int)(MAIN_Y_SIZES[0] / CONFIG_OUTPUT_CHANNELS);
+
+//     for (int t = 0; t < DATA_TRIAL_COUNT; t++)
+//     {
+//         uint64_t startTimeTrial = esp_timer_get_time();
+
+//         // Per-trial LSTM state buffer, zeroed (state must not leak across trials).
+//         float* second_input_ptr = new float[intermediate_size + 2 * state_size]{0};
+//         const int* second_input_lengths = new const int[3]{
+//             intermediate_size, state_size, state_size };
+
+//         if (qc.use_optim_lstm) master_handle->reset_optim_lstm_state();
+
+//         TrialStats trial;
+//         trial.config       = t;            // report the TRIAL index in this sweep
+//         trial.window_len   = (long)MAIN_WINDOW_LEN;
+//         trial.step         = lstm_step;
+//         trial.quant_a      = qc.label_a;
+//         trial.quant_b      = qc.label_b;
+//         trial.quant_lstm   = qc.label_lstm;
+//         trial.quant_reg    = qc.label_reg;
+//         trial.size_a_kb    = master_handle->getModelSizeBytes(idx_a)    / 1024.0;
+//         trial.size_b_kb    = master_handle->getModelSizeBytes(idx_b)    / 1024.0;
+//         trial.size_lstm_kb = master_handle->getModelSizeBytes(idx_lstm) / 1024.0;
+//         trial.size_reg_kb  = master_handle->getModelSizeBytes(idx_reg)  / 1024.0;
+//         trial.arena_a_kb    = master_handle->getArenaUsedBytes(0) / 1024.0;
+//         trial.arena_b_kb    = master_handle->getArenaUsedBytes(1) / 1024.0;
+//         trial.arena_lstm_kb = master_handle->getArenaUsedBytes(2) / 1024.0;
+//         trial.arena_reg_kb  = master_handle->getArenaUsedBytes(3) / 1024.0;
+
+//         int in_win = 0, out_win = 0, win_count = 0;
+//         while (in_win < trial_len_samples && out_win < out_trial_len)
+//         {
+//             WindowStageTimes wt;
+//             run_inference_window(
+//                 master_handle, qc, win_count,
+//                 &x_data[t], y_data, t,        // x: this trial; y indexed by t
+//                 trial_len_samples, out_trial_len,
+//                 input_win_len, input_size,
+//                 output_win_len, output_size,
+//                 intermediate_size, first_out_len,
+//                 input_trial, output_trial, correct_trial,
+//                 second_input_ptr, second_input_lengths,
+//                 &wt, &trial);
+
+//             trial.add_window(wt);
+//             in_win  += input_win_len;
+//             out_win += output_win_len;
+//             win_count++;
+//             vTaskDelay(1 / portTICK_PERIOD_MS);   // feed TWDT / let idle task run
+//         }
+
+//         delete[] second_input_ptr;
+//         delete[] second_input_lengths;
+
+//         trial.trial_total_us = esp_timer_get_time() - startTimeTrial;
+//         trial_report_row(final_report, REPORT_MAX, trial);
+
+//         ESP_LOGI("TRIAL", "SWEEP TRIAL %d/%d ENDED, %llu \xCE\xBCs, AVG NMSE: %.6e",
+//                  t, DATA_TRIAL_COUNT, (unsigned long long)trial.trial_total_us,
+//                  trial.nmse.avg());
+
+//         vTaskDelay(10 / portTICK_PERIOD_MS);
+//     }
+
+//     master_handle->clear_models();
+//     master_handle->clear_optim_lstm();
+
+//     ESP_LOGI("FINAL REPORT", "%s", final_report);
+// }
+
+//BENCHMARK TESTING
 // void run_testing_benchmark()
 // {
 //     BenchmarkHandle* benchmark_handle = new BenchmarkHandle("benchmark_models");
@@ -1108,17 +1286,17 @@ void run_testing_benchmark_csv() {
     delete bh;
     
 }
-void test_lsl()
-{
-    LSLHandle* main_handle = new LSLHandle((int)MAIN_WINDOW_LENS[0]);
+// void test_lsl()
+// {
+//     LSLHandle* main_handle = new LSLHandle((int)MAIN_WINDOW_LENS[0]);
 
-    while (true)
-    {
-        main_handle->add_to_window();
-        main_handle->print_current_window();
-    }
+//     while (true)
+//     {
+//         main_handle->add_to_window();
+//         main_handle->print_current_window();
+//     }
     
-}
+// }
 extern "C" void app_main(void) {
     //Disable watchdog
     printf("ESP32_READY\n");
@@ -1126,11 +1304,7 @@ extern "C" void app_main(void) {
                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
     
     
-    //run_testing_benchmark();
-    //run_optimized();
+    
     //printf("ticks_per_second = %lu\n", (unsigned long)tflite::ticks_per_second());
     run_app();
-
-    //run_one_app();
-    //run_testing_benchmark_csv();
 }

@@ -110,7 +110,72 @@ double MasterHandle::print_output(const float* output_window, int output_size, c
     return mse;
 }
 
+// double MasterHandle::print_output(const float* output_window, int output_size,
+//                                   const float* correct_window,
+//                                   double& out_mse, double& out_mae)
+// {
+//     double sse = 0.0;
+//     double sae = 0.0;
+//     for (int j = 0; j < output_size; j++)
+//     {
+//         double diff = (double)output_window[j] - (double)correct_window[j];
+//         sse += diff * diff;
+//         sae += fabs(diff);
 
+//         // printf("(%d) out=% .6lf  ref=% .6lf  diff=% .3lf\n",
+//         //        j, output_window[j], correct_window[j], diff);
+//     }
+
+//     out_mse = sse / (double)output_size;
+//     out_mae = sae / (double)output_size;
+
+//     //printf("MSE: %.6e  (%.8f)\n", out_mse, out_mse);
+//     //printf("MAE: %.6e  (%.8f)\n", out_mae, out_mae);
+
+//     return out_mse;
+// }
+
+double MasterHandle::print_output(const float* output_window, int output_size,
+                                  const float* correct_window,
+                                  double& out_mse, double& out_mae, double& out_nmse)
+{
+    const double EPS = 1e-8;  // guards the normalizer when xref is ~constant
+
+    // Pass 1: mean of the reference (xref) for the normalizer.
+    double mean_ref = 0.0;
+    for (int j = 0; j < output_size; j++)
+        mean_ref += (double)correct_window[j];
+    mean_ref /= (double)output_size;
+
+    // Pass 2: accumulate errors and reference variance.
+    double sse = 0.0;   // ||xref - x||²  = Σ(y - ŷ)²
+    double sae = 0.0;   // Σ|y - ŷ|
+    double sst = 0.0;   // ||xref - mean(xref)||² = Σ(y - ȳ)²
+
+    for (int j = 0; j < output_size; j++)
+    {
+        double y    = (double)correct_window[j];
+        double diff = y - (double)output_window[j];   // xref - x
+        double dev  = y - mean_ref;                   // xref - mean(xref)
+
+        sse += diff * diff;
+        sae += fabs(diff);
+        sst += dev * dev;
+
+        // printf("(%d) out=% .6lf  ref=% .6lf  diff=% .3lf\n",
+        //        j, output_window[j], correct_window[j], diff);
+    }
+
+    out_mse  = sse / (double)output_size;
+    out_mae  = sae / (double)output_size;
+    out_nmse = sse / (sst + EPS);   // variance-normalized, 0-safe
+
+    printf("MSE:  %.6e  (%.8f)\n", out_mse,  out_mse);
+    printf("MAE:  %.6e  (%.8f)\n", out_mae,  out_mae);
+    printf("NMSE: %.6e  (%.8f)\n", out_nmse, out_nmse);
+
+    return out_mse;
+}
 void MasterHandle::clear_models()
 {
         delete m_model[0];

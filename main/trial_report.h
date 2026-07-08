@@ -41,6 +41,8 @@ struct WindowStageTimes {
     uint64_t elub_us      = 0;  // second ELU (esp_timer)
     uint64_t window_us    = 0;  // whole-window wall clock (infa+elua+infb+elub+loop)
     double   mse          = 0.0;
+    double mae             =0.0;
+    double nmse             =0.0;
     // LSTM/regressor steps are added individually via TrialStats::add_step()
 };
 
@@ -68,6 +70,8 @@ struct TrialStats {
     AvgMax elua, elub;          // us
     AvgMax window_us;           // us
     AvgMax mse;
+    AvgMax mae;
+    AvgMax nmse;
 
     // per-step reductions (over all steps of all windows in the trial)
     AvgMax lstm_step;           // ticks
@@ -80,7 +84,7 @@ struct TrialStats {
     void reset_accumulators() {
         infa.reset(); infb.reset();
         elua.reset(); elub.reset();
-        window_us.reset(); mse.reset();
+        window_us.reset(); mse.reset();mae.reset();nmse.reset();
         lstm_step.reset(); reg_step.reset();
         lstm_native_us.reset();
         trial_total_us = 0;
@@ -93,6 +97,8 @@ struct TrialStats {
         elub.add((double)w.elub_us);
         window_us.add((double)w.window_us);
         mse.add(w.mse);
+        mae.add(w.mae);
+        nmse.add(w.nmse);
     }
     inline void add_lstm_native_step(double us) { lstm_native_us.add(us); }
     inline void add_lstm_step(int32_t ticks) { lstm_step.add((double)ticks); }
@@ -115,7 +121,7 @@ inline void trial_report_header(char* buf, int size)
         "lstm_native_us_avg,lstm_native_us_max,"
         "window_us_avg,window_us_max,"
         "trial_total_us,"
-        "mse_avg,mse_max\n");
+        "mse_avg,mse_max,mae_avg,mae_max,nmse_avg,nmse_max\n");
 }
 
 // ---- one CSV row per trial ----
@@ -134,7 +140,7 @@ inline void trial_report_row(char* buf, int size, const TrialStats& t)
         "%.2f,%.0f," 
         "%.2f,%.0f,"
         "%llu,"
-        "%.6e,%.6e\n",
+        "%.6e,%.6e,%.6e,%.6e,%.6e,%.6e\n",
         t.config, t.window_len, t.step,
         t.quant_a, t.quant_b, t.quant_lstm, t.quant_reg,
         t.size_a_kb, t.size_b_kb, t.size_lstm_kb, t.size_reg_kb,
@@ -146,7 +152,7 @@ inline void trial_report_row(char* buf, int size, const TrialStats& t)
         t.lstm_native_us.avg(), t.lstm_native_us.max(),
         t.window_us.avg(), t.window_us.max(),
         (unsigned long long)t.trial_total_us,
-        t.mse.avg(), t.mse.max());
+        t.mse.avg(), t.mse.max(), t.mae.avg(), t.mae.max(),t.nmse.avg(), t.nmse.max());
 }
 
 #endif // TRIAL_REPORT_H

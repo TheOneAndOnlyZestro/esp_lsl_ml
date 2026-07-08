@@ -39,6 +39,15 @@ public:
         const int8_t** x1w, const int32_t** x1b,
         const int8_t** h1w, const int32_t** h1b);
 
+    bool allocatePointerOnFlashXY_MultiTrial(
+        const char* partition,
+        const uint32_t base_x, const uint8_t** out_ptr_x,
+        const uint32_t base_y, const uint8_t** out_ptrs_y,
+        int count,
+        const uint32_t* x_offsets,
+        const uint32_t* y_offsets,
+        OFFSET_TYPE offset_type);
+
     uint8_t* allocatePointerOnPSRAM(const int size);
 };
 

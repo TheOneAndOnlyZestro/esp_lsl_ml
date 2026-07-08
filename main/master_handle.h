@@ -94,7 +94,9 @@ class MasterHandle {
         uint64_t optim_lstm_step(const float* x_slice_f32, int x_len, float* y_out_f32, bool use_c16);
 
         double print_output(const float* output_window, int output_size, const float* correct_window);
-
+        
+        double print_output(const float* output_window, int output_size, const float* correct_window,
+                            double& out_mse, double& out_mae, double& out_nmse);
         void display_output(const float* output_window, int output_sizes);
         void clear_models();
 

@@ -99,6 +99,58 @@ bool ModelFlash::allocatePointerOnFlashXY(const char* partition,
     return true;
 }
 
+bool ModelFlash::allocatePointerOnFlashXY_MultiTrial(
+        const char* partition,
+        const uint32_t base_x, const uint8_t** out_ptr_x,
+        const uint32_t base_y, const uint8_t** out_ptrs_y,
+        int count,
+        const uint32_t* x_offsets,
+        const uint32_t* y_offsets,
+        OFFSET_TYPE offset_type)
+{
+    const esp_partition_t* partition_ = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA,
+        ESP_PARTITION_SUBTYPE_ANY,
+        partition);
+ 
+    if (partition_ == nullptr) {
+        printf("ModelFlash: partition '%s' not found in partition table\n", partition);
+        return false;
+    }
+ 
+    const void* base = nullptr;
+    esp_partition_mmap_handle_t mmap_handle_ = 0;
+    esp_err_t err = esp_partition_mmap(
+        partition_, 0, partition_->size,
+        ESP_PARTITION_MMAP_DATA,
+        &base, &mmap_handle_);
+ 
+    if (err != ESP_OK) {
+        printf("ModelFlash: mmap failed: %d\n", err);
+        return false;
+    }
+ 
+    const uint8_t* base8 = static_cast<const uint8_t*>(base);
+ 
+    // Per-trial X: fill every pointer from the X offset table (mirrors Y).
+    for (int i = 0; i < count; i++) {
+        uint32_t off = (offset_type == OFFSET_TYPE::INT8)
+                           ? x_offsets[i]
+                           : x_offsets[i] * sizeof(float);
+        out_ptr_x[i] = base8 + base_x + off;
+    }
+ 
+    // Per-trial Y: identical scheme.
+    for (int i = 0; i < count; i++) {
+        uint32_t off = (offset_type == OFFSET_TYPE::INT8)
+                           ? y_offsets[i]
+                           : y_offsets[i] * sizeof(float);
+        out_ptrs_y[i] = base8 + base_y + off;
+    }
+ 
+    return true;
+}
+ 
 bool ModelFlash::allocatePointerOnFlashOptimLSTMWeightsBiases(const char* partition,
         const int8_t** x0w, const int32_t** x0b,
         const int8_t** h0w, const int32_t** h0b,
