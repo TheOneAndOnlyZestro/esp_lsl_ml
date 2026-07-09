@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "binary_manifests/dense_layers_seed1/models_manifest_0.h"
-
+//#include "binary_manifests/dense_layers_seed1/models_manifest_0.h"
+#include "binary_manifests/conv-40/models_manifest_0.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
@@ -79,7 +79,7 @@ public:
         m_model->ClearProfiler();
         bool ok = m_model->predict(input_ptr, input_sizes, output_ptr, output_sizes);
         if (!ok) return -1;
-        return m_model->getTotalTicks();
+        return m_model->getTotalTime();
     }
  
     // Mean squared error, no printf.

@@ -37,6 +37,7 @@ private:
     bool owns_arena = true;          // false when arena is borrowed (persistent)
     void init_common(const unsigned char* model_data, char* report_buffer, int size);
     
+    uint64_t m_predict_time;
     tflite::MicroProfiler profiler;
 public:
     // Constructor — override default 80 KB arena if a model needs more
@@ -65,6 +66,7 @@ public:
     
     void getTotalProfileTimePerOp() ;
     int32_t getTotalTicks() const;
+    int32_t getTotalTime() const;
     void callProfilerLog() const;
     bool isInitialized() const { return initialized; }
 

@@ -287,6 +287,10 @@ int32_t Model::getTotalTicks() const
 {
     return profiler.GetTotalTicks();
 }
+int32_t Model::getTotalTime() const
+{
+    return m_predict_time;
+}
 void Model::getTotalProfileTimePerOp()
 {
     profiler.LogTicksPerTagCsv();
@@ -304,6 +308,7 @@ bool Model::predict(const float* input_data, const int* input_lengths,
         return false;
     }
 
+    uint64_t start_time = esp_timer_get_time();
     int input_offset = 0;
     for(int i =0; i < input_size; i++) {
         if (input[i]->type == kTfLiteFloat32) {
@@ -360,10 +365,12 @@ bool Model::predict(const float* input_data, const int* input_lengths,
         output_offset += output_lengths[i];
     }
     
+    m_predict_time = esp_timer_get_time() - start_time;
     return true;
 }
 bool Model::predict(const int8_t* input_data, const int* input_lengths, int8_t* results, const int* output_lengths)
 {
+    uint64_t start_time = esp_timer_get_time();
     if (!initialized) {
         return false;
     }
@@ -396,7 +403,7 @@ bool Model::predict(const int8_t* input_data, const int* input_lengths, int8_t* 
         }
         output_offset += output_lengths[i];
     }
-
+    m_predict_time = esp_timer_get_time() - start_time;
     return true;
 
 
@@ -404,6 +411,7 @@ bool Model::predict(const int8_t* input_data, const int* input_lengths, int8_t* 
 
 bool Model::predict(const float* input_data, const int* input_lengths, int8_t* results, const int* output_lengths)
 {
+    uint64_t start_time = esp_timer_get_time();
     if (!initialized) {
         return false;
     }
@@ -456,11 +464,12 @@ bool Model::predict(const float* input_data, const int* input_lengths, int8_t* r
         }
         output_offset += output_lengths[i];
     }
-
+    m_predict_time = esp_timer_get_time() - start_time;
     return true;
 }
 bool Model::predict(const int8_t* input_data, const int* input_lengths, float* results, const int* output_lengths)
 {
+    uint64_t start_time = esp_timer_get_time();
     if (!initialized) {
         return false;
     }
@@ -501,7 +510,7 @@ bool Model::predict(const int8_t* input_data, const int* input_lengths, float* r
         }
         output_offset += output_lengths[i];
     }
-
+    m_predict_time = esp_timer_get_time() - start_time;
     return true;
 }
 size_t Model::getArenaUsedBytes() const {

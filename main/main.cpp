@@ -1,23 +1,14 @@
 #include "master_handle.h"
 #include "benchmark_handle.h"
 //#include "window_data.h"
-//#include "binary_manifests/dense_for_espnn/manifest_0.h"
-#include "binary_manifests/dense_layers_seed1/manifest_0.h"
 #include "weights.h"
 
 #include "lsl_handle.h"
-//#include "binary_manifests/four_models_step_500/manifest_0.h"
-// #include "binary_manifests/better_trials/trial_15/manifest_0.h"
-// #include "binary_manifests/calibrated_better/models_manifest_0.h"
-
-// #include "binary_manifests/trials_768/trial_test_25/manifest_0.h"
-// #include "binary_manifests/calibrated_768/models_manifest_0.h"
-
-//#include "binary_manifests/multiple_train_trials/manifest_0.h"
-//#include "binary_manifests/calibrated_768/models_manifest_0.h"
 
 #include "binary_manifests/models_verification/manifest.h"
 #include "binary_manifests/models_verification/models_manifest_0.h"
+
+#include "binary_manifests/conv-40/manifest_0.h"
 
 #include "tensorflow/lite/micro/micro_time.h"
 
@@ -1096,7 +1087,6 @@ int** input_sizes, int** output_sizes, const uint8_t** data,int* total_input_siz
     }
     
     // Allocate the entire buffer
-
     if(usePSRAM)
         *input_buffer = (float*)heap_caps_malloc((*total_input_size) * sizeof(float), MALLOC_CAP_SPIRAM);
     else
@@ -1170,7 +1160,6 @@ static void benchmark_one_quant(BenchmarkHandle* bh,
     int   *input_sizes  = nullptr, *output_sizes  = nullptr;
     int    total_input = 0, total_output = 0;
  
-    // ----- PASS 1: PSRAM (always). Discovers the true arena size. -----
     allocateInputandOutputbuffers(&input_buffer, &output_buffer, &correct_buffer,
                                   &input_sizes, &output_sizes, data,
                                   &total_input, &total_output, config_index,
@@ -1200,14 +1189,15 @@ static void benchmark_one_quant(BenchmarkHandle* bh,
     }
     bh->clear_models();
  
-    // ----- DECISION: measure-then-decide -----
-    SramFitness fit = sram_fitness_check(/*model_copy=*/row.model_size_bytes,
-                                         /*arena=*/measured_arena);
-    row.sram_eligible = fit.eligible;
-    if (!fit.eligible && row.sram_skip_reason[0] == '\0') {
-        row.sram_skip_reason = fit.reason;
-    }
- 
+    // SramFitness fit = sram_fitness_check(/*model_copy=*/row.model_size_bytes,
+    //                                      /*arena=*/measured_arena);
+    // row.sram_eligible = fit.eligible;
+    // if (!fit.eligible && row.sram_skip_reason[0] == '\0') {
+    //     row.sram_skip_reason = fit.reason;
+    // }
+    
+    SramFitness fit;
+    fit.eligible = 1;
     heap_caps_free(input_buffer);   input_buffer   = nullptr;
     heap_caps_free(output_buffer);  output_buffer  = nullptr;
     heap_caps_free(correct_buffer); correct_buffer = nullptr;
@@ -1306,5 +1296,6 @@ extern "C" void app_main(void) {
     
     
     //printf("ticks_per_second = %lu\n", (unsigned long)tflite::ticks_per_second());
-    run_app();
+    //run_app();
+    run_testing_benchmark_csv();
 }
