@@ -2,8 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-//#include "binary_manifests/dense_layers_seed1/models_manifest_0.h"
-#include "binary_manifests/conv-40/models_manifest_0.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
@@ -19,17 +17,20 @@ class BenchmarkHandle {
         LSLHandle* m_lsl_handle;
 
         Model* m_model;
-        
+
         uint8_t* m_model_ptr; // IN RAM
         bool inPSRAM = false;
         ModelFlash* m_model_flash;
-        
+
         const char* models_partition;
-        
+
         const uint8_t** models_ptrs; // ON FLASH
 
-        // Persistent buffers — allocated ONCE, reused for every model, freed
-        // only in the destructor. This is what prevents heap fragmentation.
+        int m_model_count   = 0; // was BENCHMARK_MODEL_COUNT
+        const uint32_t* m_model_offsets = nullptr;  // was BENCHMARK_MODEL_OFFSETS
+        const uint32_t* m_model_sizes   = nullptr;  // was BENCHMARK_MODEL_SIZES
+
+
         uint8_t* m_arena_sram  = nullptr;   // internal-RAM arena (180 KB)
         uint8_t* m_arena_psram = nullptr;   // PSRAM arena (CONFIG_ARENA_SIZE)
         uint8_t* m_model_buf   = nullptr;   // model-copy buffer (worst-case)
@@ -37,15 +38,20 @@ class BenchmarkHandle {
         static const int SRAM_ARENA_BYTES  = 180 * 1024;
         static const int PSRAM_ARENA_BYTES = CONFIG_ARENA_SIZE * 1024;
         size_t   m_model_buf_cap = 0;       // capacity of m_model_buf
-    
+
     public:
-        BenchmarkHandle(const char* models_partition);
+        // Manifest data is injected here instead of being read from the
+        // manifest header. `model_offsets` and `model_sizes` must each have
+        // `model_count` entries and must outlive this object.
+        // If your manifest declares these arrays with a different element
+        // type (e.g. size_t or int), change the parameter types to match.
+        BenchmarkHandle(const char* models_partition,
+                        int model_count,
+                        const uint32_t* model_offsets,
+                        const uint32_t* model_sizes);
         ~BenchmarkHandle();
 
         void init_model_refs();
-        // void init_model(int model_index, bool usePSRAM, int input_size,
-        //                          int output_size, char* report_buffer, int size,
-        //                          size_t arena_bytes);
 
         void init_model(int model_index, bool usePSRAM, int input_size,
                                  int output_size, char* report_buffer, int size,
@@ -59,16 +65,21 @@ class BenchmarkHandle {
         ,char* report_buffer, int size);
 
 public:
+    // Convenience accessors so callers don't need the manifest either,
+    // if they only have the handle.
+    int model_count() const { return m_model_count; }
+    uint32_t model_size(int index) const { return m_model_sizes[index]; }
+
     // True iff the most recently init'd model constructed and allocated tensors.
     bool model_ok() const {
         return m_model != nullptr && m_model->isInitialized();
     }
- 
+
     // Measured arena usage of the current model (0 if none / not initialized).
     size_t arena_used() const {
         return m_model ? m_model->getArenaUsedBytes() : 0;
     }
- 
+
     // Run one inference and return the profiler tick total for THAT invocation.
     // Clears the profiler first so the value reflects exactly one Invoke().
     // ticks == microseconds on this target (ticks_per_second == 1000000).
@@ -81,7 +92,7 @@ public:
         if (!ok) return -1;
         return m_model->getTotalTime();
     }
- 
+
     // Mean squared error, no printf.
     static float compute_mse(const float* out, int n, const float* correct) {
         float mse = 0.0f;
@@ -91,7 +102,7 @@ public:
         }
         return (n > 0) ? mse / (float)n : 0.0f;
     }
- 
+
     // Signal-to-quantization-noise ratio in dB. Scale-free, so it stays
     // interpretable even when output magnitude drifts with depth.
     //   SQNR_dB = 10 * log10( sum(correct^2) / sum((out-correct)^2) )
