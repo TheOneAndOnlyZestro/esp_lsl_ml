@@ -4,22 +4,37 @@
 #include "lsl_handle.h"
 
 //#define RANDOM_WEIGHTS_BENCHMARK
-#define EMG_MODEL_BENCHMARK
+//#define EMG_MODEL_BENCHMARK
 //#define QUANTIZATION_FIDELITY
 //#define RANDOM_WEIGHTS_BENCHMARK
 #ifdef EMG_MODEL_BENCHMARK
-    #include "binary_manifests/models_verification/manifest.h"
-    #include "binary_manifests/models_verification/models_manifest_0.h"
+    #include "binary_manifests/refactored_models_verification/manifest.h"
+    #include "binary_manifests/refactored_models_verification/models_manifest_0.h"
 #endif
 
 #ifdef RANDOM_WEIGHTS_BENCHMARK
-    #include "binary_manifests/conv-40/manifest_0.h"
-    #include "binary_manifests/conv-40/models_manifest_0.h"
+    // #include "binary_manifests/lstm-timestep-verification/manifest_0.h"
+    // #include "binary_manifests/lstm-timestep-verification/models_manifest_0.h"
+
+    // #include "binary_manifests/dense_layers_seed1/manifest_0.h"
+    // #include "binary_manifests/dense_layers_seed1/models_manifest_0.h"
+
+    // #include "binary_manifests/lstm-layers-verification/manifest_0.h"
+    // #include "binary_manifests/lstm-layers-verification/models_manifest_0.h"
+
+    // #include "binary_manifests/lstm-hiddensize-verification2/manifest_0.h"
+    // #include "binary_manifests/lstm-hiddensize-verification2/models_manifest_0.h"
+
+    #include "binary_manifests/Conv2D-InputSize-Verification/manifest_0.h"
+    #include "binary_manifests/Conv2D-InputSize-Verification/models_manifest_0.h"
+
 #endif
 
 #ifdef QUANTIZATION_FIDELITY
-    #include "binary_manifests/multiple_train_trials/manifest_0.h"
-    #include "binary_manifests/calibrated_better/models_manifest_0.h"
+    // #include "binary_manifests/multiple_train_trials/manifest_0.h"
+    // #include "binary_manifests/calibrated_better/models_manifest_0.h"
+    #include "binary_manifests/quant_fidelity_test_verification/manifest.h"
+    #include "binary_manifests/quant_fidelity_test_verification/models_manifest_0.h"
 #endif
 
 #include "tensorflow/lite/micro/micro_time.h"

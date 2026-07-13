@@ -1,5 +1,4 @@
 #include "benchmark_handle.h"
-
 BenchmarkHandle::BenchmarkHandle(const char* models_partition,
                                  int model_count,
                                  const uint32_t* model_offsets,
@@ -68,7 +67,21 @@ void BenchmarkHandle::init_model(int model_index, bool usePSRAM, int input_size,
     uint64_t startInit = esp_timer_get_time();
     m_model = new Model(m_model_flash, m_model_ptr, arena, arena_cap,   // borrowing ctor
                         input_size, output_size, this->inPSRAM, report_buffer, size);
-
+    
+    // m_model = new Model(m_model_flash, m_model_ptr, arena_cap, 
+    //                     input_size, output_size, this->inPSRAM, report_buffer, size);
+    
+    // if (this->inPSRAM) {
+    //     m_model_ptr = m_model_flash->allocatePointerOnPSRAM(m_model_sizes[model_index]);
+    //     memcpy(m_model_ptr, this->models_ptrs[model_index], m_model_sizes[model_index]);
+    //     m_model = new Model(m_model_flash, m_model_ptr, PSRAM_ARENA_BYTES,
+    //                         input_size, output_size, true, report_buffer, size);
+    // } else {
+    //     m_model_ptr = m_model_buf;
+    //     memcpy(m_model_ptr, this->models_ptrs[model_index], m_model_sizes[model_index]);
+    //     m_model = new Model(m_model_flash, m_model_ptr, m_arena_sram, SRAM_ARENA_BYTES,
+    //                         input_size, output_size, false, report_buffer, size);
+    // }
     uint64_t durationinit = esp_timer_get_time() - startInit;
     float durationInMs = durationinit / 1000;
 

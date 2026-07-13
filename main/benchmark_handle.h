@@ -40,11 +40,6 @@ class BenchmarkHandle {
         size_t   m_model_buf_cap = 0;       // capacity of m_model_buf
 
     public:
-        // Manifest data is injected here instead of being read from the
-        // manifest header. `model_offsets` and `model_sizes` must each have
-        // `model_count` entries and must outlive this object.
-        // If your manifest declares these arrays with a different element
-        // type (e.g. size_t or int), change the parameter types to match.
         BenchmarkHandle(const char* models_partition,
                         int model_count,
                         const uint32_t* model_offsets,
