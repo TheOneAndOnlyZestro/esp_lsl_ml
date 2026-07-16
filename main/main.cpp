@@ -3,8 +3,8 @@
 
 #include "lsl_handle.h"
 
+#define EMG_MODEL_BENCHMARK
 //#define RANDOM_WEIGHTS_BENCHMARK
-//#define EMG_MODEL_BENCHMARK
 //#define QUANTIZATION_FIDELITY
 //#define RANDOM_WEIGHTS_BENCHMARK
 #ifdef EMG_MODEL_BENCHMARK
