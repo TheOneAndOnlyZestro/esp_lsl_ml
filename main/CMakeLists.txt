@@ -56,8 +56,8 @@ REQUIRES driver esp_timer spi_flash
 # esptool_py_flash_to_partition(flash "benchmark_models" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/Conv2D-InputSize-Verification/models_0.bin")
 # esptool_py_flash_to_partition(flash "benchmark_data" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/Conv2D-InputSize-Verification/data.bin")
 
-# esptool_py_flash_to_partition(flash "benchmark_models" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/refactored_models_verification/models_0.bin")
-# esptool_py_flash_to_partition(flash "benchmark_data" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/refactored_models_verification/data.bin")
+esptool_py_flash_to_partition(flash "benchmark_models" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/refactored_models_verification/models_0.bin")
+esptool_py_flash_to_partition(flash "benchmark_data" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/refactored_models_verification/data.bin")
 
-esptool_py_flash_to_partition(flash "benchmark_models" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/quant_fidelity_test_verification/models_0.bin")
-esptool_py_flash_to_partition(flash "benchmark_data" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/quant_fidelity_test_verification/data.bin")
+# esptool_py_flash_to_partition(flash "benchmark_models" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/quant_fidelity_test_verification/models_0.bin")
+# esptool_py_flash_to_partition(flash "benchmark_data" "${CMAKE_CURRENT_SOURCE_DIR}/data_binaries/quant_fidelity_test_verification/data.bin")
