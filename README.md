@@ -55,7 +55,7 @@ In `run_app()` (main.cpp), pick the flash indices (`idx_a`, `idx_b`, `idx_lstm`,
 
 > ⚠️ The chosen model indices and the `QuantConfig` **must be consistent** — a mismatch causes unpredictable behaviour.
 
-### 7. Run using idf.py build flash monitor with ESP32 connected to build and flash it and then monitor serial output
+### 7. Run using - idf.py build flash monitor - with ESP32 connected to build and flash it and then monitor serial output
 ---
 
 ## Workflow 2 — Random Weights Benchmark
